@@ -101,6 +101,7 @@ export default function ChatPage() {
   const handleLogout = () => {
     // 실제 구현에서는 로그아웃 로직 추가
     localStorage.removeItem('access_token')
+    localStorage.removeItem('mcpServices')
     navigate("/login")
   }
 
