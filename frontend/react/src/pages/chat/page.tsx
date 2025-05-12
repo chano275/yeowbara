@@ -49,7 +49,7 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
 
@@ -60,41 +60,41 @@ export default function ChatPage() {
       sender: "user",
       timestamp: new Date(),
     }
-
     setMessages((prev) => [...prev, userMessage])
     setInput("")
 
-    // 봇 응답 시뮬레이션 (실제 구현에서는 AI 응답 로직 추가)
-    setTimeout(() => {
+    try {
+      // 실제 API 호출
+      const response = await api.post("/api/chat", { message: input })
+      const data = response.data as { response: string }
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: getBotResponse(input),
+        content: data.response, // 서버 응답에 맞게 수정
         sender: "bot",
         timestamp: new Date(),
       }
-
       setMessages((prev) => [...prev, botMessage])
-    }, 1000)
-  }
-
-  // 간단한 봇 응답 생성 함수 (실제 구현에서는 AI 모델 사용)
-  const getBotResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase()
-
-    if (input.includes("안녕") || input.includes("hello")) {
-      return "안녕하세요! 오늘 기분이 어떠신가요?"
-    } else if (input.includes("도움") || input.includes("help")) {
-      return "저는 당신의 질문에 답변하고 도움을 드릴 수 있어요. 무엇이든 물어보세요!"
-    } else if (input.includes("mcp") || input.includes("서비스")) {
-      const activeServices = services
-        .filter((s) => s.active)
-        .map((s) => s.name)
-        .join(", ")
-      return activeServices
-        ? `현재 활성화된 MCP 서비스: ${activeServices}`
-        : "활성화된 MCP 서비스가 없습니다. MCP 설정 페이지에서 서비스를 설정해보세요."
-    } else {
-      return "흥미로운 질문이네요. 더 자세히 알려주실 수 있을까요?"
+    } catch (error: any) {
+      // 서버에서 반환한 에러 메시지 추출
+      let errorMsg = "서버와의 통신에 실패했습니다."
+      if (error?.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMsg = error.response.data
+        } else if (error.response.data.detail) {
+          if (Array.isArray(error.response.data.detail)) {
+            errorMsg = error.response.data.detail.map((d: any) => d.msg).join(' ')
+          } else if (typeof error.response.data.detail === 'string') {
+            errorMsg = error.response.data.detail
+          }
+        }
+      }
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: errorMsg,
+        sender: "bot",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
     }
   }
 
