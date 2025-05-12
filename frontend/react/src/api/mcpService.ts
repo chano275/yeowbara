@@ -27,6 +27,63 @@ export const fetchEnvironmentVariables = async (): Promise<Record<string, Record
   }
 };
 
+// 특정 MCP 서비스의 환경변수만 조회하는 API
+export const fetchEnvironmentVariablesByService = async (public_id: string): Promise<Record<string, string>> => {
+  try {
+    console.log(`서비스 ID: ${public_id}로 환경변수 조회 요청`);
+    const response = await api.get(`/api/env/${public_id}`);
+    // const response = await axios.get(`https://k12b107.p.ssafy.io/api/env/${public_id}`);
+    console.log(`${public_id} 서비스 환경변수 조회 응답:`, response);
+    console.log(`${public_id} 서비스 환경변수 조회 데이터:`, response.data);
+    
+    // API 응답이 다양한 형태로 올 수 있으므로 구조를 확인하고 적절히 처리
+    let envVars: Record<string, string> = {};
+    
+    if (response.data) {
+      const data = response.data as Record<string, any>;
+      
+      // env_settings 객체가 존재하는 경우 (예: {public_id: '...', env_settings: {NOTION_API_TOKEN: '...'}})
+      if (data.env_settings && typeof data.env_settings === 'object') {
+        console.log('env_settings 객체 발견:', data.env_settings);
+        Object.entries(data.env_settings).forEach(([key, value]) => {
+          if (typeof value === 'string') {
+            envVars[key] = value;
+          } else if (value !== null && value !== undefined) {
+            envVars[key] = String(value);
+          }
+        });
+      } 
+      // 응답이 직접 환경변수 객체인 경우 (예: {NOTION_API_TOKEN: '...'})
+      else if (typeof data === 'object' && !Array.isArray(data)) {
+        // public_id와 환경변수가 아닌 필드 제외
+        const { public_id: pid, ...rest } = data;
+        
+        // 나머지 필드를 환경변수로 처리
+        Object.entries(rest).forEach(([key, value]) => {
+          if (key !== 'env_settings' && typeof value === 'string') {
+            envVars[key] = value;
+          } else if (key !== 'env_settings' && value !== null && value !== undefined) {
+            envVars[key] = String(value);
+          }
+        });
+      } else if (Array.isArray(response.data)) {
+        // 응답이 배열인 경우 (예: [{key: "key1", value: "value1"}, ...])
+        response.data.forEach((item: any) => {
+          if (item.key && (item.value !== undefined && item.value !== null)) {
+            envVars[item.key] = String(item.value);
+          }
+        });
+      }
+    }
+    
+    console.log(`${public_id} 서비스 환경변수 변환 결과:`, envVars);
+    return envVars;
+  } catch (error) {
+    console.error(`${public_id} 서비스 환경변수 조회 실패:`, error);
+    return {}; // 에러 발생 시 빈 객체 반환
+  }
+};
+
 // MCP 서비스 설정 저장 API
 export const saveMcpServiceSettings = async (services: any[]): Promise<void> => {
   try {
@@ -44,7 +101,7 @@ export const saveMcpServiceSettings = async (services: any[]): Promise<void> => 
       public_id: string; 
       env_vars: Record<string, string>; 
     } = {
-      public_id: activeServices[0].id,
+      public_id: activeServices[0].id, // McpService의 id는 서버의 public_id와 동일
       env_vars: {}
     };
     

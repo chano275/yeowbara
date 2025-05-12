@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom"
 import { Save, X, ArrowLeft, Loader2 } from "lucide-react"
 import "@/styles/globals.css"
 import ServiceIcon from "@/components/ServiceIcon"
-import { fetchMcpServices, saveMcpServiceSettings, toggleMcpSelection, createPod, fetchEnvironmentVariables } from "@/api/mcpService"
+import { fetchMcpServices, saveMcpServiceSettings, toggleMcpSelection, createPod, fetchEnvironmentVariablesByService } from "@/api/mcpService"
 import { McpService, McpServiceResponse } from "@/types/mcp"
 
 export default function McpSetupPage() {
@@ -23,6 +23,7 @@ export default function McpSetupPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [dialogLoading, setDialogLoading] = useState(false)
 
   // MCP 서비스 목록
   const [services, setServices] = useState<McpService[]>([])
@@ -39,21 +40,16 @@ export default function McpSetupPage() {
           throw new Error("서비스 데이터를 불러오지 못했습니다.")
         }
         
-        // API에서 저장된 환경변수 가져오기
-        const savedEnvironmentVars = await fetchEnvironmentVariables();
-        
-        // 로컬스토리지에서 저장된 사용자 설정 불러오기
+        // 로컬스토리지에서 저장된 사용자 설정 불러오기 (환경변수 제외)
         const savedUserSettings = localStorage.getItem("mcpServices")
         const userSettings = savedUserSettings ? JSON.parse(savedUserSettings) : []
         
         // API 응답을 McpService 형태로 변환
         const formattedServices: McpService[] = servicesData.map((service: McpServiceResponse) => {
+          // 로컬스토리지에 저장된 활성화 상태만 불러오기
           const savedService = Array.isArray(userSettings) ? 
-            userSettings.find((s: McpService) => s.id === service.public_id) : 
+            userSettings.find((s: {id: string, active: boolean}) => s.id === service.public_id) : 
             undefined
-          
-          // 서버에서 가져온 환경변수
-          const savedEnvVarsFromServer = savedEnvironmentVars[service.public_id] || {};
           
           // 환경변수가 없는 경우 기본적으로 활성화 상태로 설정
           const hasNoEnvVars = service.required_env_vars.length === 0;
@@ -63,22 +59,14 @@ export default function McpSetupPage() {
             name: service.name,
             icon: service.mcp_type, // mcp_type을 icon으로 사용
             active: savedService ? savedService.active : hasNoEnvVars, // 환경변수가 없으면 기본 활성화
-            is_selected: service.is_selected,
-            required_env_vars: service.required_env_vars.map((key: string) => {
-              // 우선순위: 1. 서버에서 가져온 환경변수, 2. 로컬 스토리지에 저장된 환경변수, 3. 빈 문자열
-              const serverValue = savedEnvVarsFromServer[key];
-              const savedValue = savedService ? 
-                savedService.required_env_vars?.find((sev: {key: string, value: string}) => sev.key === key)?.value : 
-                undefined;
-              
-              return { 
-                key, 
-                value: serverValue || savedValue || "" 
-              };
-            })
+            is_selected: service.is_selected, // 서버에서 받아온 선택 상태 그대로 사용
+            required_env_vars: service.required_env_vars.map((key: string) => ({
+              key,
+              value: "" // 초기값은 빈 문자열로 설정, DB에서 가져옴
+            }))
           }
         })
-        // console.log("MCP 서비스 목록 가져오기 성공:", formattedServices)
+        
         setServices(formattedServices)
       } catch (err) {
         console.error("MCP 서비스 목록 가져오기 실패:", err)
@@ -93,43 +81,59 @@ export default function McpSetupPage() {
   }, [])
 
   const openServiceDialog = async (service: McpService) => {
+    console.log("openServiceDialog 호출:", service.name);
+    
     // 환경변수가 없는 경우 모달을 열지 않음
     if (service.required_env_vars.length === 0) {
       // 카드를 클릭한 경우 선택 상태 토글
+      console.log("환경변수 없음, 선택 상태 토글");
       handleToggleSelection(null, service);
       return;
     }
     
+    // 먼저 모달을 표시하고 로딩 상태 표시
+    setSelectedService(service);
+    setIsDialogOpen(true);
+    setDialogLoading(true);
+    
     try {
-      // 서비스 모달 열기 전에 최신 환경변수 조회
-      const savedEnvironmentVars = await fetchEnvironmentVariables();
-      const serverEnvVars = savedEnvironmentVars[service.id] || {};
+      // 모달 열기 전에 해당 서비스의 최신 환경변수만 조회
+      const serverEnvVars = await fetchEnvironmentVariablesByService(service.id);
+      console.log(`${service.name} 서비스의 환경변수 조회 완료:`, serverEnvVars);
       
-      // 서버의 최신 환경변수로 업데이트
+      // 서버에서 받은 환경변수로 서비스 정보 업데이트
       const updatedService = {
         ...service,
-        required_env_vars: service.required_env_vars.map((env: { key: string; value: string }) => ({
-          key: env.key,
-          value: serverEnvVars[env.key] || env.value
-        }))
+        required_env_vars: service.required_env_vars.map((env: { key: string; value: string }) => {
+          const serverValue = serverEnvVars[env.key];
+          console.log(`환경변수 ${env.key}:`, serverValue || "값 없음");
+          return {
+            key: env.key,
+            value: serverValue || env.value // 서버 값이 있으면 사용, 없으면 기존 값 유지
+          };
+        })
       };
       
       setSelectedService(updatedService);
-      setIsDialogOpen(true);
     } catch (error) {
-      console.error("환경변수 불러오기 실패:", error);
-      // 오류 발생해도 모달은 열어줌 (기존 데이터 사용)
-      setSelectedService(service);
-      setIsDialogOpen(true);
+      console.error(`${service.name} 서비스 환경변수 불러오기 실패:`, error);
+      // 오류 발생 시 알림
+      alert("환경변수를 불러오는데 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setDialogLoading(false);
     }
   };
 
   // 서비스 선택 상태 변경
   const handleToggleSelection = async (e: React.MouseEvent | null, service: McpService) => {
+    const tmpSelected = service.is_selected;
+    service.is_selected = !service.is_selected;
     // 이벤트 전파 중지 (openServiceDialog가 호출되지 않도록) - 이벤트가 있는 경우만
     if (e) {
       e.stopPropagation();
     }
+    
+    console.log("handleToggleSelection 호출:", service.name);
     
     // 환경변수가 없는 경우 항상 선택 가능
     const hasNoEnvVars = service.required_env_vars.length === 0;
@@ -138,18 +142,44 @@ export default function McpSetupPage() {
     const hasAllEnvVars = service.required_env_vars.every((env: { key: string; value: string }) => env.value.trim() !== "");
     
     // 선택 해제하는 경우는 항상 가능, 선택하는 경우는 환경변수 검사 (환경변수가 없는 경우는 예외)
-    if (!service.is_selected && !hasAllEnvVars && !hasNoEnvVars) {
+    if (!tmpSelected && !hasAllEnvVars && !hasNoEnvVars) {
       alert("서비스를 선택하기 전에 모든 환경변수를 입력해주세요.");
-      // 모달 열기
-      openServiceDialog(service);
+      // 모달 직접 열기 (openServiceDialog 호출하지 않음)
+      setSelectedService(service);
+      setIsDialogOpen(true);
+      setDialogLoading(true);
+      
+      try {
+        // 해당 서비스의 환경변수 조회
+        const serverEnvVars = await fetchEnvironmentVariablesByService(service.id);
+        console.log(`${service.name} 서비스의 환경변수 조회 완료:`, serverEnvVars);
+        
+        // 서버에서 받은 환경변수로 서비스 정보 업데이트
+        const updatedService = {
+          ...service,
+          required_env_vars: service.required_env_vars.map((env: { key: string; value: string }) => {
+            const serverValue = serverEnvVars[env.key];
+            return {
+              key: env.key,
+              value: serverValue || env.value // 서버 값이 있으면 사용, 없으면 기존 값 유지
+            };
+          })
+        };
+        
+        setSelectedService(updatedService);
+      } catch (error) {
+        console.error(`${service.name} 서비스 환경변수 불러오기 실패:`, error);
+      } finally {
+        setDialogLoading(false);
+      }
       return;
     }
     
     try {
-      setLoading(true);
-      
+      // setLoading(true);
+
       // 토글 API 호출 - 현재 선택 상태를 전달하여 자동으로 처리
-      const newSelectedState = await toggleMcpSelection(service.id, service.is_selected);
+      const newSelectedState = await toggleMcpSelection(service.id, tmpSelected);
       
       // 서비스 목록 업데이트
       const updatedServices = services.map(s => 
@@ -158,8 +188,12 @@ export default function McpSetupPage() {
       
       setServices(updatedServices);
       
-      // 로컬 스토리지에도 저장
-      localStorage.setItem("mcpServices", JSON.stringify(updatedServices));
+      // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
+      const simplifiedServices = updatedServices.map(s => ({
+        id: s.id,
+        active: s.active
+      }));
+      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
     } catch (err) {
       console.error("MCP 선택 상태 변경 실패:", err);
       alert("서비스 선택 상태 변경에 실패했습니다.");
@@ -190,13 +224,17 @@ export default function McpSetupPage() {
     );
     
     try {
-      setLoading(true);
+      // setLoading(true);
       
-      // API를 통해 환경변수 저장 (활성화된 서비스만 저장됨)
+      // API를 통해 환경변수 저장 (DB에만 저장됨)
       await saveMcpServiceSettings([updatedService]);
       
-      // 로컬 스토리지에도 저장
-      localStorage.setItem("mcpServices", JSON.stringify(updatedServices));
+      // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
+      const simplifiedServices = updatedServices.map(s => ({
+        id: s.id,
+        active: s.active
+      }));
+      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
       
       // 상태 업데이트
       setServices(updatedServices);
@@ -208,8 +246,12 @@ export default function McpSetupPage() {
       // API 저장 실패해도 UI에는 반영
       setServices(updatedServices);
       
-      // 실패해도 로컬에는 저장
-      localStorage.setItem("mcpServices", JSON.stringify(updatedServices));
+      // 실패해도 로컬에는 활성화 상태만 저장
+      const simplifiedServices = updatedServices.map(s => ({
+        id: s.id,
+        active: s.active
+      }));
+      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
       
       alert(`서버 저장에 실패했지만 설정은 적용되었습니다.`);
     } finally {
@@ -230,7 +272,7 @@ export default function McpSetupPage() {
     })
   }
 
-  const handleSaveAll = async () => {
+  const handleCreatePod = async () => {
     // 모든 환경변수가 입력된 서비스만 활성화 가능
     const incompleteServices = services
       .filter(service => service.active)
@@ -253,21 +295,29 @@ export default function McpSetupPage() {
     }
 
     try {
-      setLoading(true);
+      // setLoading(true);
       
       // POD 생성 API 호출 - 선택된 MCP 서비스로 POD 생성
       await createPod();
       
-      // 로컬 스토리지에 저장
-      localStorage.setItem("mcpServices", JSON.stringify(services));
+      // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
+      const simplifiedServices = services.map(s => ({
+        id: s.id,
+        active: s.active
+      }));
+      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
       
       // 채팅 페이지로 이동
       navigate("/chat");
     } catch (err) {
       console.error("POD 생성 실패:", err);
       
-      // 실패해도 로컬에는 저장
-      localStorage.setItem("mcpServices", JSON.stringify(services));
+      // 실패해도 로컬에는 활성화 상태만 저장
+      const simplifiedServices = services.map(s => ({
+        id: s.id,
+        active: s.active
+      }));
+      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
       
       // 오류 메시지 표시
       alert("POD 생성에 실패했습니다. 다시 시도해주세요.");
@@ -315,7 +365,10 @@ export default function McpSetupPage() {
                 {services.map((service) => (
                   <div
                     key={service.id}
-                    onClick={() => openServiceDialog(service)}
+                    onClick={() => {
+                      console.log("서비스 카드 클릭:", service.name);
+                      openServiceDialog(service);
+                    }}
                     className={`
                       flex flex-col items-center justify-center p-4 rounded-lg border border-gray-700 
                       cursor-pointer transition-all duration-200 hover:border-gray-500 relative
@@ -329,7 +382,12 @@ export default function McpSetupPage() {
                     {/* 선택 토글 스위치 */}
                     <div 
                       className="absolute top-2 right-2 cursor-pointer"
-                      onClick={(e) => handleToggleSelection(e, service)}
+                      onClick={(e) => {
+                        // 이벤트 전파 중지 - 부모의 onClick이 실행되지 않도록 함
+                        e.stopPropagation();
+                        console.log("토글 스위치 클릭");
+                        handleToggleSelection(e, service);
+                      }}
                     >
                       <div className={`
                         w-10 h-5 rounded-full transition-all duration-200 flex items-center px-0.5
@@ -371,7 +429,7 @@ export default function McpSetupPage() {
 
             <div className="flex justify-end">
               <Button
-                onClick={handleSaveAll}
+                onClick={handleCreatePod}
                 className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
                 disabled={loading}
               >
@@ -410,21 +468,28 @@ export default function McpSetupPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {selectedService?.required_env_vars.map((envVar: {key: string, value: string}, index: number) => (
-              <div key={envVar.key} className="space-y-2">
-                <label htmlFor={envVar.key} className="text-sm font-medium text-gray-300">
-                  {envVar.key}
-                </label>
-                <Input
-                  id={envVar.key}
-                  value={envVar.value}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEnvVarChange(index, e.target.value)}
-                  placeholder={`${envVar.key} 값을 입력하세요`}
-                  className="bg-gray-800 border-gray-700 text-white"
-                  required
-                />
+            {dialogLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-6 w-6 text-purple-500 animate-spin" />
+                <span className="ml-3 text-white">환경변수를 불러오는 중...</span>
               </div>
-            ))}
+            ) : (
+              selectedService?.required_env_vars.map((envVar: {key: string, value: string}, index: number) => (
+                <div key={envVar.key} className="space-y-2">
+                  <label htmlFor={envVar.key} className="text-sm font-medium text-gray-300">
+                    {envVar.key}
+                  </label>
+                  <Input
+                    id={envVar.key}
+                    value={envVar.value}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleEnvVarChange(index, e.target.value)}
+                    placeholder={`${envVar.key} 값을 입력하세요`}
+                    className="bg-gray-800 border-gray-700 text-white"
+                    required
+                  />
+                </div>
+              ))
+            )}
           </div>
 
           <DialogFooter>
