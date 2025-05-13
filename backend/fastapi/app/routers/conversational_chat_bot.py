@@ -84,14 +84,27 @@ async def conversational_chat(
         await smart_session_manager.get_or_create_session(user_id, pod_name)
         
         # 스마트한 메시지 처리
+        logger.info(f"메시지 처리 시작 - 사용자: {user_id}, 메시지: {chat_request.message}")
         result = await smart_session_manager.send_message(user_id, chat_request.message)
         
         if result.get("error"):
+            # 에러 타입에 따른 상세 처리
+            error_details = result.get("details", {})
+            error_type = error_details.get("error_type", "unknown")
+            
+            if error_type == "json_decode_error":
+                logger.warning(f"에이전트 JSON 응답 오류 - 사용자: {user_id}")
+                logger.warning(f"원시 응답: {error_details.get('raw_response', 'N/A')}")
+                logger.warning(f"JSON 오류: {error_details.get('json_error', 'N/A')}")
+            
             return ConversationalChatResponse(
                 response=result["response"],
                 timestamp=datetime.utcnow(),
                 had_context=False,
-                session_info={"error": True}
+                session_info={
+                    "error": True,
+                    "error_details": error_details
+                }
             )
         
         # 세션 정보 추가
@@ -272,3 +285,55 @@ async def analyze_message_context(
             "patterns_detected": "검출된 패턴 분석 결과"
         }
     }
+
+@router.post("/debug/raw-curl-test")
+async def debug_raw_curl_test(
+    current_user: dict = Depends(get_current_user)
+):
+    """직접 curl 명령어로 에이전트 테스트"""
+    user_id = str(current_user["_id"])
+    
+    try:
+        from crud.nosql import get_user_by_id
+        user = await get_user_by_id(user_id)
+        
+        if not user.get("pod_name"):
+            return {
+                "success": False,
+                "message": "Pod가 생성되지 않았습니다."
+            }
+        
+        pod_name = user["pod_name"]
+        
+        # 간단한 JSON 메시지 테스트
+        test_data = '{"text": "hello", "user_id": "test"}'
+        
+        cmd = [
+            "kubectl", "exec", pod_name,
+            "-n", "agent-env",
+            "-c", "agent",
+            "--",
+            "curl", "-s", "-X", "POST",
+            settings.AGENT_URL,
+            "-H", "Content-Type: application/json",
+            "-d", test_data
+        ]
+        
+        logger.info(f"Raw curl 테스트 명령: {' '.join(cmd)}")
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        return {
+            "success": result.returncode == 0,
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "cmd": ' '.join(cmd)
+        }
+        
+    except Exception as e:
+        logger.exception(f"Raw curl 테스트 오류: {e}")
+        return {
+            "success": False,
+            "message": f"오류 발생: {str(e)}"
+        }

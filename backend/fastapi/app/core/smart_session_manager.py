@@ -121,11 +121,37 @@ class SmartChatSessionManager:
             api_data["new_conversation"] = True
             logger.info(f"새 대화로 전송 - 사용자: {user_id}")
         
-        # kubectl exec을 통한 API 호출
+        # kubectl 명령어 개선 - JSON 전달 방식 변경
         pod_name = session["pod_name"]
-        escaped_data = json.dumps(api_data).replace('"', '\\"')
         
-        # kubectl 명령어 개선 - 외부에서 컨테이너 내 서비스 호출
+        # API 요청을 위한 JSON 구조 생성 (chat_bot.py 방식 활용)
+        if needs_context:
+            # context가 있는 경우
+            json_data = {
+                "text": message,
+                "user_id": user_id,
+                "context": context,
+                "continue_conversation": True
+            }
+        else:
+            # 새 대화인 경우
+            json_data = {
+                "text": message,
+                "user_id": user_id,
+                "new_conversation": True
+            }
+        
+        # 각 필드를 안전하게 이스케이프
+        escaped_text = json.dumps(message)[1:-1]  # 따옴표 제거
+        escaped_user_id = json.dumps(user_id)[1:-1]
+        
+        # JSON 문자열 구성 (chat_bot.py 방식)
+        if needs_context:
+            escaped_context = json.dumps(context)[1:-1]
+            json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "context": "{escaped_context}", "continue_conversation": true}}'
+        else:
+            json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "new_conversation": true}}'
+        
         cmd = [
             "kubectl", "exec", pod_name, 
             "-n", "agent-env", 
@@ -134,7 +160,7 @@ class SmartChatSessionManager:
             "curl", "-s", "-X", "POST", 
             settings.AGENT_URL,
             "-H", "Content-Type: application/json",
-            "-d", escaped_data
+            "-d", json_str
         ]
         
         logger.debug(f"실행할 kubectl 명령: {' '.join(cmd)}")
@@ -178,12 +204,27 @@ class SmartChatSessionManager:
                 logger.warning(f"빈 응답 - 사용자: {user_id}")
                 return {
                     "response": "서버에서 빈 응답을 받았습니다.",
-                    "error": True
+                    "error": True,
+                    "details": {
+                        "error_type": "empty_response",
+                        "pod_name": pod_name
+                    }
                 }
         except json.JSONDecodeError as e:
             logger.error(f"JSON 파싱 오류: {e}")
             logger.error(f"원본 응답: {result.stdout}")
-            bot_response = result.stdout.strip() if result.stdout.strip() else "응답 파싱 오류"
+            
+            # JSON 파싱 에러 상세 정보 반환
+            return {
+                "response": f"에이전트 응답 파싱 오류: 올바르지 않은 JSON 형식입니다.",
+                "error": True,
+                "details": {
+                    "error_type": "json_decode_error",
+                    "raw_response": result.stdout[:200] + "..." if len(result.stdout) > 200 else result.stdout,
+                    "json_error": str(e),
+                    "pod_name": pod_name
+                }
+            }
         
         # 대화 히스토리 업데이트
         session["history"].append({
