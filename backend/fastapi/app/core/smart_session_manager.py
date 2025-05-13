@@ -406,15 +406,32 @@ class SmartChatSessionManager:
     async def reset_session(self, user_id: str):
         """세션을 초기화합니다."""
         if user_id in self.sessions:
-            pod_name = self.sessions[user_id]["pod_name"]
-            self.sessions[user_id] = {
-                "history": [],
-                "pod_name": pod_name,
-                "created_at": datetime.utcnow(),
-                "last_activity": datetime.utcnow(),
-                "conversation_context": ""
-            }
-            logger.info(f"세션 리셋: {user_id}")
+            # 현재 사용자 데이터에서 새 Pod 이름 가져오기
+            from crud.nosql import get_user_by_id
+            try:
+                user = await get_user_by_id(user_id)
+                new_pod_name = user.get("pod_name")
+                
+                if new_pod_name:
+                    logger.info(f"세션 리셋 - 이전 Pod: {self.sessions[user_id].get('pod_name', 'None')}, 새 Pod: {new_pod_name}")
+                    self.sessions[user_id] = {
+                        "history": [],
+                        "pod_name": new_pod_name,  # 새 Pod 이름 사용
+                        "created_at": datetime.utcnow(),
+                        "last_activity": datetime.utcnow(),
+                        "conversation_context": ""
+                    }
+                else:
+                    logger.warning(f"사용자에게 Pod가 설정되지 않음 - 사용자: {user_id}")
+                    # Pod가 없는 경우 세션 삭제
+                    del self.sessions[user_id]
+            except Exception as e:
+                logger.error(f"세션 리셋 중 오류: {e}")
+                # 에러 발생 시 기본 리셋
+                if user_id in self.sessions:
+                    del self.sessions[user_id]
+            
+            logger.info(f"세션 리셋 완료: {user_id}")
 
 # 전역 세션 매니저 인스턴스
 smart_session_manager = SmartChatSessionManager()
