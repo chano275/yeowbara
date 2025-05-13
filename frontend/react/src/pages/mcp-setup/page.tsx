@@ -126,8 +126,6 @@ export default function McpSetupPage() {
 
   // 서비스 선택 상태 변경
   const handleToggleSelection = async (e: React.MouseEvent | null, service: McpService) => {
-    const tmpSelected = service.is_selected;
-    service.is_selected = !service.is_selected;
     // 이벤트 전파 중지 (openServiceDialog가 호출되지 않도록) - 이벤트가 있는 경우만
     if (e) {
       e.stopPropagation();
@@ -138,85 +136,123 @@ export default function McpSetupPage() {
     // 환경변수가 없는 경우 항상 선택 가능
     const hasNoEnvVars = service.required_env_vars.length === 0;
     
-    // 환경변수가 모두 입력되었는지 확인
-    const hasAllEnvVars = service.required_env_vars.every((env: { key: string; value: string }) => env.value.trim() !== "");
+    // 현재 선택 상태 저장
+    const currentSelected = service.is_selected;
     
-    // 선택 해제하는 경우는 항상 가능, 선택하는 경우는 환경변수 검사 (환경변수가 없는 경우는 예외)
-    if (!tmpSelected && !hasAllEnvVars && !hasNoEnvVars) {
-      alert("서비스를 선택하기 전에 모든 환경변수를 입력해주세요.");
-      // 모달 직접 열기 (openServiceDialog 호출하지 않음)
-      setSelectedService(service);
-      setIsDialogOpen(true);
-      setDialogLoading(true);
-      
+    // 환경변수가 없는 경우 바로 토글
+    if (hasNoEnvVars) {
       try {
-        // 해당 서비스의 환경변수 조회
-        const serverEnvVars = await fetchEnvironmentVariablesByService(service.id);
-        console.log(`${service.name} 서비스의 환경변수 조회 완료:`, serverEnvVars);
+        // 토글 API 호출 - 현재 선택 상태의 반대 값으로 변경
+        const newSelectedState = await toggleMcpSelection(service.id, currentSelected);
         
-        // 서버에서 받은 환경변수로 서비스 정보 업데이트
-        const updatedService = {
-          ...service,
-          required_env_vars: service.required_env_vars.map((env: { key: string; value: string }) => {
-            const serverValue = serverEnvVars[env.key];
-            return {
-              key: env.key,
-              value: serverValue || env.value // 서버 값이 있으면 사용, 없으면 기존 값 유지
-            };
-          })
-        };
+        // 서비스 목록 업데이트
+        const updatedServices = services.map(s => 
+          s.id === service.id ? { ...s, is_selected: newSelectedState } : s
+        );
         
-        setSelectedService(updatedService);
-      } catch (error) {
-        console.error(`${service.name} 서비스 환경변수 불러오기 실패:`, error);
-      } finally {
-        setDialogLoading(false);
+        setServices(updatedServices);
+        
+        // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
+        const simplifiedServices = updatedServices.map(s => ({
+          id: s.id,
+          active: s.active
+        }));
+        localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
+      } catch (err) {
+        console.error("MCP 선택 상태 변경 실패:", err);
+        alert("서비스 선택 상태 변경에 실패했습니다.");
       }
       return;
     }
     
+    // 환경변수가 필요한 경우, 서버에서 최신 환경변수 조회
     try {
-      // setLoading(true);
-
-      // 토글 API 호출 - 현재 선택 상태를 전달하여 자동으로 처리
-      const newSelectedState = await toggleMcpSelection(service.id, tmpSelected);
+      // 서비스 선택 전에 최신 환경변수 다시 조회
+      console.log("환경변수 다시 조회 중...");
+      const serverEnvVars = await fetchEnvironmentVariablesByService(service.id);
       
-      // 서비스 목록 업데이트
-      const updatedServices = services.map(s => 
-        s.id === service.id ? { ...s, is_selected: newSelectedState } : s
-      );
+      // 조회된 환경변수로 서비스 정보 업데이트
+      const updatedEnvVars = service.required_env_vars.map((env: { key: string; value: string }) => {
+        const serverValue = serverEnvVars[env.key];
+        return {
+          key: env.key,
+          value: serverValue || "" // 서버 값이 있으면 사용, 없으면 빈 문자열로 설정
+        };
+      });
       
-      setServices(updatedServices);
+      // 모든 환경변수가 입력되었는지 확인
+      const hasAllEnvVars = updatedEnvVars.every((env: { key: string; value: string }) => env.value.trim() !== "");
       
-      // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
-      const simplifiedServices = updatedServices.map(s => ({
-        id: s.id,
-        active: s.active
-      }));
-      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
-    } catch (err) {
-      console.error("MCP 선택 상태 변경 실패:", err);
-      alert("서비스 선택 상태 변경에 실패했습니다.");
-    } finally {
-      setLoading(false);
+      // 환경변수가 모두 입력된 경우 토글 가능
+      if (hasAllEnvVars) {
+        try {
+          // 토글 API 호출
+          const newSelectedState = await toggleMcpSelection(service.id, currentSelected);
+          
+          // 서비스 목록 업데이트 - 최신 환경변수와 선택 상태 반영
+          const updatedServices = services.map(s => 
+            s.id === service.id ? { 
+              ...s, 
+              is_selected: newSelectedState,
+              required_env_vars: updatedEnvVars,
+              active: true // 환경변수가 모두 있으므로 활성화 상태로 변경
+            } : s
+          );
+          
+          setServices(updatedServices);
+          
+          // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
+          const simplifiedServices = updatedServices.map(s => ({
+            id: s.id,
+            active: s.active
+          }));
+          localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
+        } catch (err) {
+          console.error("MCP 선택 상태 변경 실패:", err);
+          alert("서비스 선택 상태 변경에 실패했습니다.");
+        }
+      } else {
+        // 환경변수가 없거나 불완전한 경우 모달 열기
+        alert("서비스를 선택하기 전에 모든 환경변수를 입력해주세요.");
+        
+        // 최신 환경변수로 업데이트된 서비스 정보로 모달 열기
+        const serviceWithUpdatedEnvVars = {
+          ...service,
+          required_env_vars: updatedEnvVars
+        };
+        
+        setSelectedService(serviceWithUpdatedEnvVars);
+        setIsDialogOpen(true);
+      }
+    } catch (error) {
+      console.error(`${service.name} 서비스 환경변수 불러오기 실패:`, error);
+      alert("환경변수를 불러오는데 실패했습니다. 다시 시도해주세요.");
     }
   };
 
   const handleSaveEnvVars = async () => {
-    if (!selectedService) return
+    if (!selectedService) return;
 
     // 모든 환경변수가 입력되었는지 확인
     const allEnvVarsComplete = selectedService.required_env_vars
       .every((ev: { key: string; value: string }) => ev.value.trim() !== "");
 
-    if (!allEnvVarsComplete) {
-      // 환경변수가 입력되지 않은 경우 알림
-      alert("모든 환경변수를 입력해주세요.");
-      return;
+    // 서비스 활성화 상태 업데이트 - 모든 환경변수가 입력된 경우에만 활성화
+    const updatedService = { 
+      ...selectedService, 
+      active: allEnvVarsComplete 
+    };
+    
+    // 환경변수가 없는데 현재 is_selected가 true라면 false로 변경
+    if (!allEnvVarsComplete && updatedService.is_selected) {
+      try {
+        // 선택 해제 API 호출
+        await toggleMcpSelection(updatedService.id, true);
+        updatedService.is_selected = false;
+      } catch (err) {
+        console.error("서비스 선택 상태 해제 실패:", err);
+      }
     }
-
-    // 서비스 활성화 상태로 업데이트
-    const updatedService = { ...selectedService, active: true };
     
     // 전체 서비스 목록 업데이트
     const updatedServices = services.map((service) => 
@@ -224,9 +260,8 @@ export default function McpSetupPage() {
     );
     
     try {
-      // setLoading(true);
-      
       // API를 통해 환경변수 저장 (DB에만 저장됨)
+      // 수정된 API에서는 active 상태와 관계없이 모든 환경변수를 저장함
       await saveMcpServiceSettings([updatedService]);
       
       // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
@@ -273,7 +308,7 @@ export default function McpSetupPage() {
   }
 
   const handleCreatePod = async () => {
-    // 모든 환경변수가 입력된 서비스만 활성화 가능
+    // 활성화된 서비스 중 모든 환경변수가 입력되지 않은 서비스 찾기
     const incompleteServices = services
       .filter(service => service.active)
       .filter(service => 
@@ -295,8 +330,6 @@ export default function McpSetupPage() {
     }
 
     try {
-      // setLoading(true);
-      
       // POD 생성 API 호출 - 선택된 MCP 서비스로 POD 생성
       await createPod();
       

@@ -87,12 +87,9 @@ export const fetchEnvironmentVariablesByService = async (public_id: string): Pro
 // MCP 서비스 설정 저장 API
 export const saveMcpServiceSettings = async (services: any[]): Promise<void> => {
   try {
-    // 활성화된 서비스만 필터링
-    const activeServices = services.filter(service => service.active);
-    
-    // 서비스가 없으면 진행하지 않음
-    if (activeServices.length === 0) {
-      console.warn('저장할 활성화된 서비스가 없습니다.');
+    // 활성화 상태와 관계없이 전달된 서비스 사용 (active 상태 체크 제거)
+    if (services.length === 0) {
+      console.warn('저장할 서비스가 없습니다.');
       return;
     }
     
@@ -101,13 +98,14 @@ export const saveMcpServiceSettings = async (services: any[]): Promise<void> => 
       public_id: string; 
       env_vars: Record<string, string>; 
     } = {
-      public_id: activeServices[0].id, // McpService의 id는 서버의 public_id와 동일
+      public_id: services[0].id, // McpService의 id는 서버의 public_id와 동일
       env_vars: {}
     };
     
-    // 환경변수 객체로 변환
-    activeServices[0].required_env_vars.forEach((env: { key: string; value: string }) => {
-      payload.env_vars[env.key] = env.value;
+    // 환경변수 객체로 변환 - 모든 값을 명시적으로 포함시킴(빈 문자열 포함)
+    services[0].required_env_vars.forEach((env: { key: string; value: string }) => {
+      // 값이 undefined인 경우만 빈 문자열로 변환, 나머지는 그대로 전송 (빈 문자열도 그대로 유지)
+      payload.env_vars[env.key] = env.value === undefined ? "" : env.value;
     });
     
     // 단일 객체로 POST 요청
