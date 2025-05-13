@@ -38,7 +38,12 @@ class SmartChatSessionManager:
                 "pod_name": pod_name,
                 "created_at": datetime.utcnow(),
                 "last_activity": datetime.utcnow(),
-                "conversation_context": ""  # 대화의 주제나 맥락
+                "conversation_context": "",  # 대화의 주제나 맥락
+                "current_entities": {  # 현재 논의 중인 엔터티
+                    "project": None,  # 현재 논의 중인 프로젝트
+                    "file": None,     # 현재 논의 중인 파일
+                    "branch": None    # 현재 논의 중인 브랜치
+                }
             }
             logger.info(f"새 세션 생성: {user_id}")
         
@@ -82,17 +87,93 @@ class SmartChatSessionManager:
     def _build_smart_context(self, history: List[dict], current_message: str) -> str:
         """현재 메시지와 관련된 스마트한 컨텍스트를 구성합니다."""
         context_parts = []
+        entities = {}  # 중요한 엔티티 추출
         
-        # 최근 2-3개 대화만 포함
-        recent_history = history[-3:]
+        # 대화형 처리를 위한 엔티티 수집 (더 많은 히스토리 확인)
+        for item in history[-5:]:  # 최근 5개 확인
+            user_msg = item['user']
+            bot_msg = item['bot']
+            
+            # 프로젝트명 추출 - 다양한 패턴 고려
+            import re
+            
+            # 1. "yeobara_test프로젝트" 형태에서 추출
+            project_pattern = r'([\w\-_]+)(?:프로젝트|저장소)'
+            match = re.search(project_pattern, user_msg)
+            if match:
+                entities['current_project'] = match.group(1)
+            
+            # 2. "\"프로젝트명\"" 형태에서 추출
+            quoted_pattern = r'\"([^\"]+)\".*프로젝트'
+            quoted_match = re.search(quoted_pattern, bot_msg)
+            if quoted_match:
+                entities['current_project'] = quoted_match.group(1)
+            
+            # 3. GitLab URL이나 프로젝트 정보에서 추출
+            if 'lab.ssafy.com' in bot_msg:
+                # "dmlcks1998/yeobara_test" 형태의 경로 추출
+                path_pattern = r'dmlcks1998/([\w\-_]+)'
+                match = re.search(path_pattern, bot_msg)
+                if match:
+                    entities['current_project'] = match.group(1)
+            
+            # 4. 프로젝트 정보 라인에서 추출
+            if '프로젝트' in bot_msg and '소유자' in bot_msg:
+                # 여러 프로젝트가 나열된 경우 가장 최근 언급된 것
+                project_lines = bot_msg.split('\n')
+                for line in project_lines:
+                    if 'yeobara_test' in line:
+                        entities['current_project'] = 'yeobara_test'
+                        break
+        
+        # 사용자의 현재 메시지에서 지시대명사 확인
+        current_message_lower = current_message.lower()
+        pronoun_patterns = ['그 프로젝트', '그거', '그건', '이것', '이거', '그거엔', '그거에', '그것에', '그것엔']
+        has_pronoun = any(pattern in current_message_lower for pattern in pronoun_patterns)
+        
+        # 지시대명사가 사용된 경우 중요 정보 추가
+        if has_pronoun and 'current_project' in entities:
+            context_parts.append(f"[IMPORTANT] 현재 논의 중인 프로젝트: {entities['current_project']}")
+            context_parts.append(f"[NOTICE] 사용자가 '{entities['current_project']}' 프로젝트를 참조하고 있습니다.")
+            
+            # 요청 타입 파악
+            if '파일' in current_message:
+                context_parts.append(f"[REQUEST] 사용자가 {entities['current_project']} 프로젝트의 파일 목록을 요청하고 있습니다.")
+        
+        # 기존 컨텍스트 추가 (중요한 정보 유지)
+        recent_history = history[-2:]  # 최근 2개만
         
         for item in recent_history:
-            # 대화 내용을 요약하여 포함
-            user_msg = item['user'][:100] + "..." if len(item['user']) > 100 else item['user']
-            bot_msg = item['bot'][:200] + "..." if len(item['bot']) > 200 else item['bot']
+            user_msg = item['user']
+            bot_msg = item['bot']
             
+            # 사용자 메시지
+            if len(user_msg) > 50:
+                user_msg = user_msg[:50] + "..."
             context_parts.append(f"사용자: {user_msg}")
+            
+            # 봇 메시지 (중요 정보 우선 유지)
+            if len(bot_msg) > 600:  # 제한 더 증가
+                # GitLab 프로젝트 정보 우선
+                if '프로젝트' in bot_msg:
+                    # 프로젝트 관련 중요 정보 추출
+                    lines = bot_msg.split('\n')
+                    important_lines = []
+                    for line in lines:
+                        # yeobara_test 관련 정보 우선
+                        if any(keyword in line for keyword in ['yeobara_test', 'URL:', '경로:', '소유자:', 'https://', '프로젝트 설명']):
+                            important_lines.append(line)
+                    if important_lines:
+                        bot_msg = '\n'.join(important_lines[:6]) + '...'  # 최대 6줄
+                    else:
+                        bot_msg = bot_msg[:600] + "..."
+                else:
+                    bot_msg = bot_msg[:600] + "..."
             context_parts.append(f"봇: {bot_msg}")
+        
+        # 사용자가 무엇을 요청하는지 추가 힌트 제공
+        if '파일' in current_message and '목록' in current_message:
+            context_parts.append("[CONTEXT] 사용자가 파일 목록을 요청하고 있습니다.")
         
         return "\n".join(context_parts)
     
