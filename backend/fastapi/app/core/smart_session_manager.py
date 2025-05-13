@@ -229,7 +229,9 @@ class SmartChatSessionManager:
         # JSON 문자열 구성 (chat_bot.py 방식)
         if needs_context:
             escaped_context = json.dumps(context)[1:-1]
-            json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "context": "{escaped_context}", "continue_conversation": true}}'
+            # 시스템 지시문 추가
+            system_instruction = "이전 대화의 컨텍스트를 MUST USE해야 합니다. [IMPORTANT], [NOTICE], [REQUEST] 태그에 나온 정보를 반드시 참고하세요. 지시대명사('그 프로젝트', '그거')MUST 참조합니다."
+            json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "context": "{escaped_context}", "system_instruction": "{system_instruction}", "continue_conversation": true}}'
         else:
             json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "new_conversation": true}}'
         
