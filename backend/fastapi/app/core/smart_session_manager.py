@@ -226,13 +226,25 @@ class SmartChatSessionManager:
         escaped_text = json.dumps(message)[1:-1]  # 따옴표 제거
         escaped_user_id = json.dumps(user_id)[1:-1]
         
-        # JSON 문자열 구성 (chat_bot.py 방식)
+        # 지시대명사가 사용된 경우 메시지를 직접 수정
         if needs_context:
+            # 메시지 자체에 프로젝트명 추가 시도
+            enhanced_message = self._enhance_message_with_context(message, session["history"])
+            
+            # 프로젝트명이 추가되었는지 확인
+            if enhanced_message != message:
+                escaped_text = json.dumps(enhanced_message)[1:-1]
+                logger.info(f"메시지 개선됨: '{message}' -> '{enhanced_message}'")
+            else:
+                escaped_text = json.dumps(message)[1:-1]
+                logger.info(f"메시지 개선 없음: '{message}'")
+            
             escaped_context = json.dumps(context)[1:-1]
-            # 시스템 지시문 추가
-            system_instruction = "이전 대화의 컨텍스트를 MUST USE해야 합니다. [IMPORTANT], [NOTICE], [REQUEST] 태그에 나온 정보를 반드시 참고하세요. 지시대명사('그 프로젝트', '그거')MUST 참조합니다."
+            # 시스템 지시문 더 강화
+            system_instruction = "이전 대화의 컨텍스트를 MUST USE해야 합니다. [IMPORTANT], [NOTICE], [REQUEST] 태그에 나온 정보를 반드시 참고하세요. 지시대명사('그 프로젝트', '그거')MUST 참조합니다. 한국어로 답변하세요."
             json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "context": "{escaped_context}", "system_instruction": "{system_instruction}", "continue_conversation": true}}'
         else:
+            escaped_text = json.dumps(message)[1:-1]
             json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "new_conversation": true}}'
         
         cmd = [
