@@ -118,7 +118,7 @@ class SmartChatSessionManager:
                     entities['current_project'] = match.group(1)
             
             # 4. 프로젝트 정보 라인에서 추출
-            if '프로젝트' in bot_msg and '소유자' in bot_msg:
+            if '프로젝트' in bot_msg:
                 # 여러 프로젝트가 나열된 경우 가장 최근 언급된 것
                 project_lines = bot_msg.split('\n')
                 for line in project_lines:
@@ -176,6 +176,40 @@ class SmartChatSessionManager:
             context_parts.append("[CONTEXT] 사용자가 파일 목록을 요청하고 있습니다.")
         
         return "\n".join(context_parts)
+    
+    # 지시대명사가 사용된 경우 메시지를 직접 수정하는 메서드 추가
+    def _enhance_message_with_context(self, message: str, history: List[dict]) -> str:
+        """지시대명사가 사용된 경우 메시지에 프로젝트명을 직접 추가합니다."""
+        message_lower = message.lower()
+        
+        # 지시대명사 확인
+        pronoun_patterns = ['그 프로젝트', '그거', '그건', '이것', '이거', '그거엔', '그거에']
+        has_pronoun = any(pattern in message_lower for pattern in pronoun_patterns)
+        
+        if not has_pronoun or not history:
+            return message
+        
+        # 최근 언급된 프로젝트 추출
+        for item in reversed(history[-3:]):
+            bot_msg = item['bot']
+            
+            # GitLab URL에서 프로젝트명 추출
+            import re
+            
+            # 1. URL 패턴에서 추출
+            url_match = re.search(r'dmlcks1998/([\w\-_]+)', bot_msg)
+            if url_match:
+                project_name = url_match.group(1)
+                # 메시지에 프로젝트명 추가
+                enhanced_message = f"{message} (yeobara_test 프로젝트)"
+                return enhanced_message
+            
+            # 2. "프로젝트" 단어와 함께 추출
+            if "yeobara_test" in bot_msg and "프로젝트" in bot_msg:
+                enhanced_message = f"{message} (yeobara_test 프로젝트의)"
+                return enhanced_message
+        
+        return message
     
     async def send_message(self, user_id: str, message: str) -> dict:
         """메시지를 전송하고 스마트한 응답을 받습니다."""
