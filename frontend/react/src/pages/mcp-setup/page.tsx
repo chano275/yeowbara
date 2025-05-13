@@ -22,6 +22,7 @@ export default function McpSetupPage() {
   const [selectedService, setSelectedService] = useState<McpService | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [podLoading, setPodLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogLoading, setDialogLoading] = useState(false)
 
@@ -308,33 +309,82 @@ export default function McpSetupPage() {
   }
 
   const handleCreatePod = async () => {
-    // 활성화된 서비스 중 모든 환경변수가 입력되지 않은 서비스 찾기
-    const incompleteServices = services
-      .filter(service => service.active)
-      .filter(service => 
-        service.required_env_vars.some((ev: { key: string; value: string }) => ev.value.trim() === "")
-      );
-
-    if (incompleteServices.length > 0) {
-      const serviceNames = incompleteServices.map(s => s.name).join(", ");
-      alert(`다음 서비스의 모든 환경변수를 입력해주세요: ${serviceNames}`);
-      return;
-    }
-    
-    // 선택된 서비스가 있는지 확인
-    const hasSelectedService = services.some(service => service.is_selected);
-    
-    if (!hasSelectedService) {
-      alert("최소한 하나의 MCP 서비스를 선택해주세요.");
-      return;
-    }
-
     try {
+      setPodLoading(true); // Pod 생성 로딩 상태 시작
+      
+      // 선택된 서비스가 있는지 확인
+      const selectedServices = services.filter(service => service.is_selected);
+      
+      // 선택된 서비스가 없어도 진행 가능 (0개 선택 가능하도록 수정)
+      console.log(`선택된 서비스 수: ${selectedServices.length}개`);
+      
+      // 선택된 서비스의 최신 환경변수 상태를 서버에서 다시 조회
+      let updatedServices = [...services];
+      let hasIncompleteEnvVars = false;
+      let incompleteServiceNames: string[] = [];
+      
+      // 선택된 서비스만 검사
+      for (const service of selectedServices) {
+        // 환경변수가 없는 서비스는 검사하지 않음
+        if (service.required_env_vars.length === 0) continue;
+        
+        try {
+          console.log(`${service.name} 서비스의 환경변수 다시 조회 중...`);
+          const serverEnvVars = await fetchEnvironmentVariablesByService(service.id);
+          
+          // 환경변수 업데이트
+          const updatedEnvVars = service.required_env_vars.map((env: { key: string; value: string }) => {
+            // 서버에 저장된 값 사용
+            const serverValue = serverEnvVars[env.key] || "";
+            return {
+              key: env.key, 
+              value: serverValue
+            };
+          });
+          
+          // 모든 환경변수가 입력되었는지 확인
+          const allEnvVarsComplete = updatedEnvVars.every((env: { key: string; value: string }) => 
+            env.value.trim() !== ""
+          );
+          
+          // 환경변수가 불완전하면 기록
+          if (!allEnvVarsComplete) {
+            hasIncompleteEnvVars = true;
+            incompleteServiceNames.push(service.name);
+          }
+          
+          // 서비스 업데이트
+          updatedServices = updatedServices.map(s => 
+            s.id === service.id ? {
+              ...s,
+              required_env_vars: updatedEnvVars,
+              active: allEnvVarsComplete
+            } : s
+          );
+        } catch (error) {
+          console.error(`${service.name} 서비스 환경변수 조회 실패:`, error);
+          // 오류가 발생한 경우도 불완전한 것으로 처리
+          hasIncompleteEnvVars = true;
+          incompleteServiceNames.push(`${service.name} (조회 실패)`);
+        }
+      }
+      
+      // 상태 업데이트
+      setServices(updatedServices);
+      
+      // 환경변수가 불완전한 서비스가 있는 경우
+      if (hasIncompleteEnvVars) {
+        const serviceNames = incompleteServiceNames.join(", ");
+        alert(`다음 서비스의 모든 환경변수를 입력해주세요: ${serviceNames}`);
+        setPodLoading(false);
+        return;
+      }
+
       // POD 생성 API 호출 - 선택된 MCP 서비스로 POD 생성
       await createPod();
       
       // 로컬 스토리지에는 환경변수를 제외한 필수 정보만 저장
-      const simplifiedServices = services.map(s => ({
+      const simplifiedServices = updatedServices.map(s => ({
         id: s.id,
         active: s.active
       }));
@@ -345,17 +395,10 @@ export default function McpSetupPage() {
     } catch (err) {
       console.error("POD 생성 실패:", err);
       
-      // 실패해도 로컬에는 활성화 상태만 저장
-      const simplifiedServices = services.map(s => ({
-        id: s.id,
-        active: s.active
-      }));
-      localStorage.setItem("mcpServices", JSON.stringify(simplifiedServices));
-      
       // 오류 메시지 표시
       alert("POD 생성에 실패했습니다. 다시 시도해주세요.");
     } finally {
-      setLoading(false);
+      setPodLoading(false); // Pod 생성 로딩 상태 종료
     }
   }
 
@@ -389,7 +432,12 @@ export default function McpSetupPage() {
             {loading ? (
               <div className="flex justify-center items-center p-12">
                 <Loader2 className="h-8 w-8 text-purple-500 animate-spin" />
-                <span className="ml-3 text-white">서비스 목록을 불러오는 중...</span>
+                <span className="ml-3 text-white">MCP 서비스 목록을 불러오는 중...</span>
+              </div>
+            ) : podLoading ? (
+              <div className="flex justify-center items-center p-12">
+                <Loader2 className="h-8 w-8 text-purple-500 animate-spin" />
+                <span className="ml-3 text-white">환경변수 저장 중...</span>
               </div>
             ) : error ? (
               <div className="text-center p-6 text-red-400">{error}</div>
@@ -460,25 +508,18 @@ export default function McpSetupPage() {
               </div>
             )}
 
-            <div className="flex justify-end">
-              <Button
-                onClick={handleCreatePod}
-                className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    처리 중...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    저장하고 계속하기
-                  </>
-                )}
-              </Button>
-            </div>
+            {!loading && !podLoading && !error && (
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleCreatePod}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                  disabled={podLoading}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  저장하고 계속하기
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -504,7 +545,7 @@ export default function McpSetupPage() {
             {dialogLoading ? (
               <div className="flex justify-center items-center py-8">
                 <Loader2 className="h-6 w-6 text-purple-500 animate-spin" />
-                <span className="ml-3 text-white">환경변수를 불러오는 중...</span>
+                <span className="ml-3 text-white">{selectedService?.name} 서비스의 환경변수를 불러오는 중...</span>
               </div>
             ) : (
               selectedService?.required_env_vars.map((envVar: {key: string, value: string}, index: number) => (
