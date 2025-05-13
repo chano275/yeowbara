@@ -286,54 +286,51 @@ async def analyze_message_context(
         }
     }
 
-@router.post("/debug/raw-curl-test")
-async def debug_raw_curl_test(
+@router.post("/debug/context-test")
+async def debug_context_test(
+    chat_request: ChatRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    """직접 curl 명령어로 에이전트 테스트"""
+    """컨텍스트 구성과 전달을 디버깅합니다."""
     user_id = str(current_user["_id"])
     
-    try:
-        from crud.nosql import get_user_by_id
-        user = await get_user_by_id(user_id)
-        
-        if not user.get("pod_name"):
-            return {
-                "success": False,
-                "message": "Pod가 생성되지 않았습니다."
+    if user_id not in smart_session_manager.sessions:
+        return {
+            "error": "세션이 존재하지 않습니다.",
+            "session_exists": False
+        }
+    
+    session = smart_session_manager.sessions[user_id]
+    
+    # 컨텍스트 분석
+    needs_context, context = smart_session_manager.analyze_message_context(
+        chat_request.message, 
+        session["history"]
+    )
+    
+    # 전달될 JSON 데이터 구성
+    if needs_context:
+        escaped_text = json.dumps(chat_request.message)[1:-1]
+        escaped_user_id = json.dumps(user_id)[1:-1]
+        escaped_context = json.dumps(context)[1:-1]
+        json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "context": "{escaped_context}", "continue_conversation": true}}'
+    else:
+        escaped_text = json.dumps(chat_request.message)[1:-1]
+        escaped_user_id = json.dumps(user_id)[1:-1]
+        json_str = f'{{"text": "{escaped_text}", "user_id": "{escaped_user_id}", "new_conversation": true}}'
+    
+    return {
+        "session_exists": True,
+        "history_length": len(session["history"]),
+        "needs_context": needs_context,
+        "raw_context": context if needs_context else None,
+        "json_to_send": json_str,
+        "json_size": len(json_str),
+        "recent_history": [
+            {
+                "user": item["user"],
+                "bot": item["bot"][:100] + "..." if len(item["bot"]) > 100 else item["bot"]
             }
-        
-        pod_name = user["pod_name"]
-        
-        # 간단한 JSON 메시지 테스트
-        test_data = '{"text": "hello", "user_id": "test"}'
-        
-        cmd = [
-            "kubectl", "exec", pod_name,
-            "-n", "agent-env",
-            "-c", "agent",
-            "--",
-            "curl", "-s", "-X", "POST",
-            settings.AGENT_URL,
-            "-H", "Content-Type: application/json",
-            "-d", test_data
+            for item in session["history"][-2:]
         ]
-        
-        logger.info(f"Raw curl 테스트 명령: {' '.join(cmd)}")
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        return {
-            "success": result.returncode == 0,
-            "return_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "cmd": ' '.join(cmd)
-        }
-        
-    except Exception as e:
-        logger.exception(f"Raw curl 테스트 오류: {e}")
-        return {
-            "success": False,
-            "message": f"오류 발생: {str(e)}"
-        }
+    }
