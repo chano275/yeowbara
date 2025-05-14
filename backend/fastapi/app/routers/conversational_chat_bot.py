@@ -66,8 +66,10 @@ async def conversational_chat(
     """대화형 채팅을 처리합니다. DB에서 대화 히스토리를 관리합니다."""
     
     user_id = str(current_user["_id"])
+    bot_response = None  # 초기값 설정
     
     try:
+        logger.info(f"대화 요청 시작 - 사용자: {user_id}, 메시지: {chat_request.message}")
         # 사용자 정보 조회
         from crud.nosql import get_user_by_id
         user = await get_user_by_id(user_id)
@@ -133,8 +135,9 @@ async def conversational_chat(
                 bot_response = response_data.get("response", result.stdout.strip())
             else:
                 logger.warning(f"빈 응답 - 사용자: {user_id}")
+                bot_response = "Agent에서 빈 응답을 받았습니다."
                 return ConversationalChatResponse(
-                    response="Agent에서 빈 응답을 받았습니다.",
+                    response=bot_response,
                     timestamp=datetime.utcnow(),
                     had_context=True,  # 항상 컨텍스트 포함
                     session_info={"error": True, "error_type": "empty_response"}
@@ -142,8 +145,9 @@ async def conversational_chat(
         except json.JSONDecodeError as e:
             logger.error(f"JSON 파싱 오류: {e}")
             logger.error(f"원본 응답: {result.stdout}")
+            bot_response = "Agent 응답을 파싱할 수 없습니다."
             return ConversationalChatResponse(
-                response="Agent 응답을 파싱할 수 없습니다.",
+                response=bot_response,
                 timestamp=datetime.utcnow(),
                 had_context=True,  # 항상 컨텍스트 포함
                 session_info={
@@ -153,18 +157,33 @@ async def conversational_chat(
                 }
             )
         
-        # DB에 대화 저장
-        await conversation_manager.add_message(
-            user_id=user_id,
-            user_message=chat_request.message,
-            assistant_response=bot_response
-        )
+        # DB에 대화 저장 (반드시 bot_response가 존재할 때만)
+        if bot_response is not None:
+            try:
+                logger.info(f"대화 저장 시가 - 사용자: {user_id}, 메시지: {chat_request.message[:50]}..., 응답: {bot_response[:50]}...")
+                
+                await conversation_manager.add_message(
+                    user_id=user_id,
+                    user_message=chat_request.message,
+                    assistant_response=bot_response
+                )
+                
+                logger.info(f"대화 저장 성공 - 사용자: {user_id}")
+            except Exception as save_error:
+                logger.error(f"대화 저장 오류 - 사용자: {user_id}, 오류: {str(save_error)}")
+                # 저장 오류가 발생해도 응답은 반환하도록 수정
+        else:
+            logger.warning(f"bot_response가 None이므로 대화를 저장하지 않음 - 사용자: {user_id}")
         
         # 대화 요약 정보 가져오기
-        summary = await conversation_manager.get_conversation_summary(user_id)
+        try:
+            summary = await conversation_manager.get_conversation_summary(user_id)
+        except Exception as summary_error:
+            logger.error(f"대화 요약 조회 오류 - 사용자: {user_id}, 오류: {str(summary_error)}")
+            summary = {"total_messages": 0, "has_history": False}
         
         return ConversationalChatResponse(
-            response=bot_response,
+            response=bot_response if bot_response is not None else "알 수 없는 오류가 발생했습니다.",
             timestamp=datetime.utcnow(),
             had_context=True,  # 항상 컨텍스트 포함
             session_info={
