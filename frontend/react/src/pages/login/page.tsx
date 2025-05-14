@@ -5,21 +5,28 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Link, useNavigate } from "react-router-dom"
-import { Rocket } from "lucide-react"
+import { Rocket, Loader2 } from "lucide-react"
 import api from "../../api/api"
 import axios from 'axios'
+
+interface LoginResponse {
+  access_token: string;
+  [key: string]: any;
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsLoading(true)
     try {
       // const response = await axios.post(
       //   'https://k12b107.p.ssafy.io/api/users/login',
-      const response = await api.post(
+      const response = await api.post<LoginResponse>(
         '/api/users/login',
         new URLSearchParams({
           username,
@@ -30,11 +37,17 @@ export default function LoginPage() {
         }
       );
       
-      localStorage.setItem('access_token', response.data.access_token)
-      navigate("/chat")
+      if (response.data && response.data.access_token) {
+        localStorage.setItem('access_token', response.data.access_token)
+        navigate("/chat")
+      } else {
+        alert("로그인에 실패했습니다. 토큰 발급에 실패했습니다.")
+        setIsLoading(false)
+      }
     } catch (error) {
       console.error('Login failed:', error)
-      // 에러 처리 로직 추가
+      alert("로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.")
+      setIsLoading(false)
     }
   }
 
@@ -67,6 +80,7 @@ export default function LoginPage() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
                 className="bg-gray-900/60 border-gray-700 text-white"
                 required
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -81,13 +95,22 @@ export default function LoginPage() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                 className="bg-gray-900/60 border-gray-700 text-white"
                 required
+                disabled={isLoading}
               />
             </div>
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+              disabled={isLoading}
             >
-              로그인
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  로그인 중...
+                </>
+              ) : (
+                '로그인'
+              )}
             </Button>
           </form>
         </CardContent>
