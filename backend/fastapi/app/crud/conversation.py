@@ -1,12 +1,11 @@
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from bson import ObjectId
-from core.database import get_database
+from core.database import async_conversations_collection
 
 class ConversationManager:
     def __init__(self):
-        self.db = get_database()
-        self.conversations_collection = self.db.conversations
+        self.conversations_collection = async_conversations_collection
     
     async def add_message(self, user_id: str, user_message: str, assistant_response: str):
         """대화에 메시지를 추가합니다."""
