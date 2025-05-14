@@ -102,7 +102,7 @@ async def conversational_chat(
             "-c", "agent", 
             "--", 
             "curl", "-s", "-X", "POST", 
-            f'{settings.AGENT_URL}',
+            settings.AGENT_URL,
             "-H", "Content-Type: application/json",
             "-d", json.dumps(agent_request)
         ]
