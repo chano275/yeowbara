@@ -83,3 +83,26 @@ class ChatResponse(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
+
+# 대화 메시지 모델
+class ConversationMessage(BaseModel):
+    user_message: str
+    assistant_message: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+# 사용자별 대화 컬렉션 모델
+class UserConversation(BaseModel):
+    user_id: str
+    messages: List[ConversationMessage] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # 최근 메시지만 유지 (메모리 효율성)
+    max_messages: int = 50
+
+# 대화 응답 모델 (기존 ChatResponse 확장)
+class ConversationalChatResponse(BaseModel):
+    response: str
+    timestamp: datetime
+    conversation_count: int = 0  # 총 대화 수
+    used_history: bool = False   # 히스토리를 사용했는지 여부

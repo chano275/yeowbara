@@ -80,6 +80,8 @@ def decrypt_value(encrypted_value: str):
 # 컬렉션 정의
 users = async_db.get_collection("users_nosql", codec_options=codec_options)
 mcps = async_db.get_collection("mcps_nosql", codec_options=codec_options)
+# 대화 컬렉션 추가
+conversations = async_db.get_collection("conversations", codec_options=codec_options)
 
 # MongoDB는 컬렉션이 없으면 자동으로 생성하므로 미리 만들 필요 없음
 
@@ -95,6 +97,10 @@ async def create_nosql_indexes():
     # 메인 파일에서 성공적으로 서버를 시작한 후
     # migration_public_id.py 스크립트를 실행하여 값을 추가하고 인덱스를 생성해야 함
     # await mcps.create_index("public_id", unique=True)  # 공개 ID에 유니크 인덱스 추가
+    
+    # 대화 인덱스 추가
+    await conversations.create_index("user_id")
+    await conversations.create_index([("user_id", 1), ("updated_at", -1)])
 
 # ======== 사용자 관련 CRUD ========
 
@@ -577,3 +583,119 @@ async def change_user_password(user_id: str, current_password: str, new_password
     except Exception as e:
         print(f"비밀번호 변경 중 오류 발생: {e}")
         return {"success": False, "message": f"오류 발생: {str(e)}"}
+
+# ======== 대화 관련 CRUD ========
+
+async def get_user_conversation(user_id: str):
+    """사용자의 대화 문서 조회"""
+    try:
+        return await conversations.find_one({"user_id": user_id})
+    except Exception as e:
+        print(f"사용자 대화 조회 중 오류: {e}")
+        return None
+
+async def get_recent_conversations(user_id: str, limit: int = 6) -> List[Dict[str, str]]:
+    """
+    최신 N개 대화 조회 (Agent에 전달용)
+    limit=6이면 최근 3쌍의 대화를 반환
+    """
+    try:
+        conversation = await get_user_conversation(user_id)
+        if not conversation or not conversation.get("messages"):
+            return []
+        
+        # 최신 메시지부터 limit 개수만큼 가져오기
+        recent_messages = conversation["messages"][-limit:]
+        
+        # Agent에 전달할 형식으로 변환
+        conversation_history = []
+        for msg in recent_messages:
+            conversation_history.append({
+                "user": msg["user_message"],
+                "assistant": msg["assistant_message"],
+                "timestamp": msg["timestamp"].isoformat() if hasattr(msg["timestamp"], 'isoformat') else str(msg["timestamp"])
+            })
+        
+        return conversation_history
+    except Exception as e:
+        print(f"최근 대화 조회 중 오류: {e}")
+        return []
+
+async def save_conversation_message(user_id: str, user_message: str, assistant_message: str):
+    """사용자 대화에 새 메시지 추가"""
+    try:
+        # 새 메시지 객체
+        new_message = {
+            "user_message": user_message,
+            "assistant_message": assistant_message,
+            "timestamp": datetime.utcnow()
+        }
+        
+        # 기존 대화 조회
+        conversation = await get_user_conversation(user_id)
+        
+        if conversation:
+            # 기존 대화에 메시지 추가
+            messages = conversation.get("messages", [])
+            messages.append(new_message)
+            
+            # 최대 메시지 수 제한 (50개 유지)
+            if len(messages) > 50:
+                messages = messages[-50:]
+            
+            # 업데이트
+            result = await conversations.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "messages": messages,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            return result.modified_count > 0
+        else:
+            # 새 대화 문서 생성
+            new_conversation = {
+                "user_id": user_id,
+                "messages": [new_message],
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            result = await conversations.insert_one(new_conversation)
+            return result.inserted_id is not None
+            
+    except Exception as e:
+        print(f"대화 저장 중 오류: {e}")
+        return False
+
+async def get_conversation_stats(user_id: str) -> Dict[str, Any]:
+    """사용자 대화 통계 조회"""
+    try:
+        conversation = await get_user_conversation(user_id)
+        if not conversation:
+            return {
+                "total_messages": 0,
+                "created_at": None,
+                "last_activity": None
+            }
+        
+        messages = conversation.get("messages", [])
+        return {
+            "total_messages": len(messages),
+            "created_at": conversation.get("created_at"),
+            "last_activity": conversation.get("updated_at")
+        }
+    except Exception as e:
+        print(f"대화 통계 조회 중 오류: {e}")
+        return {"total_messages": 0, "created_at": None, "last_activity": None}
+
+async def clear_user_conversation(user_id: str):
+    """사용자 대화 초기화"""
+    try:
+        result = await conversations.delete_one({"user_id": user_id})
+        return result.deleted_count > 0
+    except Exception as e:
+        print(f"대화 초기화 중 오류: {e}")
+        return False
