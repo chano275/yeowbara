@@ -109,11 +109,11 @@ async def conversational_chat(
             "-c", "agent", 
             "--", 
             "curl", "-s", "-X", "POST", 
-            settings.AGENT_URL,
+            f"{settings.AGENT_URL}-test",
             "-H", "Content-Type: application/json",
             "-d", json.dumps(agent_request, cls=DateTimeEncoder)
         ]
-        
+        logger.info(f"cmd 메시지 확인용 {cmd}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
@@ -280,138 +280,138 @@ async def get_conversation_status(current_user: dict = Depends(get_current_user)
             "timestamp": datetime.now()
         }
 
-# 개발/디버깅 엔드포인트들은 그대로 유지
-@router.get("/debug/pod-status")
-async def check_pod_status(current_user: dict = Depends(get_current_user)):
-    """사용자의 Pod 상태를 확인합니다."""
-    user_id = str(current_user["_id"])
+# # 개발/디버깅 엔드포인트들은 그대로 유지
+# @router.get("/debug/pod-status")
+# async def check_pod_status(current_user: dict = Depends(get_current_user)):
+#     """사용자의 Pod 상태를 확인합니다."""
+#     user_id = str(current_user["_id"])
     
-    try:
-        from crud.nosql import get_user_by_id
-        user = await get_user_by_id(user_id)
+#     try:
+#         from crud.nosql import get_user_by_id
+#         user = await get_user_by_id(user_id)
         
-        if not user.get("pod_name"):
-            return {
-                "success": False,
-                "message": "Pod가 생성되지 않았습니다.",
-                "pod_name": None
-            }
+#         if not user.get("pod_name"):
+#             return {
+#                 "success": False,
+#                 "message": "Pod가 생성되지 않았습니다.",
+#                 "pod_name": None
+#             }
         
-        pod_name = user["pod_name"]
+#         pod_name = user["pod_name"]
         
-        # Pod 상태 확인
-        cmd_status = ["kubectl", "get", "pod", pod_name, "-n", "agent-env", "-o", "json"]
-        result_status = subprocess.run(cmd_status, capture_output=True, text=True)
+#         # Pod 상태 확인
+#         cmd_status = ["kubectl", "get", "pod", pod_name, "-n", "agent-env", "-o", "json"]
+#         result_status = subprocess.run(cmd_status, capture_output=True, text=True)
         
-        if result_status.returncode != 0:
-            return {
-                "success": False,
-                "message": f"Pod 상태 확인 실패: {result_status.stderr}",
-                "pod_name": pod_name
-            }
+#         if result_status.returncode != 0:
+#             return {
+#                 "success": False,
+#                 "message": f"Pod 상태 확인 실패: {result_status.stderr}",
+#                 "pod_name": pod_name
+#             }
         
-        # Pod 로그 상태 확인
-        cmd_logs = ["kubectl", "logs", pod_name, "-n", "agent-env", "-c", "agent", "--tail=10"]
-        result_logs = subprocess.run(cmd_logs, capture_output=True, text=True)
+#         # Pod 로그 상태 확인
+#         cmd_logs = ["kubectl", "logs", pod_name, "-n", "agent-env", "-c", "agent", "--tail=10"]
+#         result_logs = subprocess.run(cmd_logs, capture_output=True, text=True)
         
-        # Pod 내부 서비스 확인
-        cmd_test = [
-            "kubectl", "exec", pod_name, "-n", "agent-env", "-c", "agent", "--",
-            "curl", "-s", settings.AGENT_URL
-        ]
-        result_test = subprocess.run(cmd_test, capture_output=True, text=True)
+#         # Pod 내부 서비스 확인
+#         cmd_test = [
+#             "kubectl", "exec", pod_name, "-n", "agent-env", "-c", "agent", "--",
+#             "curl", "-s", settings.AGENT_URL
+#         ]
+#         result_test = subprocess.run(cmd_test, capture_output=True, text=True)
         
-        try:
-            pod_status = json.loads(result_status.stdout)
-            status_info = {
-                "phase": pod_status.get("status", {}).get("phase"),
-                "ready": False,
-                "conditions": []
-            }
+#         try:
+#             pod_status = json.loads(result_status.stdout)
+#             status_info = {
+#                 "phase": pod_status.get("status", {}).get("phase"),
+#                 "ready": False,
+#                 "conditions": []
+#             }
             
-            conditions = pod_status.get("status", {}).get("conditions", [])
-            for condition in conditions:
-                if condition.get("type") == "Ready":
-                    status_info["ready"] = condition.get("status") == "True"
-                status_info["conditions"].append({
-                    "type": condition.get("type"),
-                    "status": condition.get("status")
-                })
-        except json.JSONDecodeError:
-            status_info = {"error": "Pod 상태 파싱 실패"}
+#             conditions = pod_status.get("status", {}).get("conditions", [])
+#             for condition in conditions:
+#                 if condition.get("type") == "Ready":
+#                     status_info["ready"] = condition.get("status") == "True"
+#                 status_info["conditions"].append({
+#                     "type": condition.get("type"),
+#                     "status": condition.get("status")
+#                 })
+#         except json.JSONDecodeError:
+#             status_info = {"error": "Pod 상태 파싱 실패"}
         
-        return {
-            "success": True,
-            "pod_name": pod_name,
-            "status": status_info,
-            "logs": result_logs.stdout[-500:] if result_logs.returncode == 0 else result_logs.stderr,
-            "service_test": {
-                "success": result_test.returncode == 0,
-                "response": result_test.stdout if result_test.returncode == 0 else result_test.stderr
-            }
-        }
+#         return {
+#             "success": True,
+#             "pod_name": pod_name,
+#             "status": status_info,
+#             "logs": result_logs.stdout[-500:] if result_logs.returncode == 0 else result_logs.stderr,
+#             "service_test": {
+#                 "success": result_test.returncode == 0,
+#                 "response": result_test.stdout if result_test.returncode == 0 else result_test.stderr
+#             }
+#         }
         
-    except Exception as e:
-        logger.exception(f"Pod 상태 확인 중 오류: {e}")
-        return {
-            "success": False,
-            "message": f"오류 발생: {str(e)}"
-        }
+#     except Exception as e:
+#         logger.exception(f"Pod 상태 확인 중 오류: {e}")
+#         return {
+#             "success": False,
+#             "message": f"오류 발생: {str(e)}"
+#         }
 
-@router.post("/chat/analyze")
-async def analyze_message_context(
-    message: dict,  # {"text": "메시지 내용"}
-    current_user: dict = Depends(get_current_user)
-):
-    """메시지와 대화 히스토리 정보를 분석합니다 (디버깅용)."""
-    user_id = str(current_user["_id"])
-    text = message.get("text", "")
+# @router.post("/chat/analyze")
+# async def analyze_message_context(
+#     message: dict,  # {"text": "메시지 내용"}
+#     current_user: dict = Depends(get_current_user)
+# ):
+#     """메시지와 대화 히스토리 정보를 분석합니다 (디버깅용)."""
+#     user_id = str(current_user["_id"])
+#     text = message.get("text", "")
     
-    # DB에서 최근 6개 대화 가져오기
-    history = await conversation_manager.get_conversation_history(user_id, limit=6)
+#     # DB에서 최근 6개 대화 가져오기
+#     history = await conversation_manager.get_conversation_history(user_id, limit=6)
     
-    return {
-        "message": text,
-        "always_send_context": True,  # 항상 전송
-        "history_count": len(history),
-        "analysis": {
-            "contains_pronouns": any(pronoun in text.lower() for pronoun in ['그것', '그거', '이것', '이거', '그 프로젝트']),
-            "is_question": '?' in text,
-            "has_temporal_reference": any(ref in text.lower() for ref in ['방금', '아까', '전에']),
-            "note": "컨텍스트 자동 판단을 제거했으므로 항상 대화 히스토리를 전송합니다."
-        }
-    }
+#     return {
+#         "message": text,
+#         "always_send_context": True,  # 항상 전송
+#         "history_count": len(history),
+#         "analysis": {
+#             "contains_pronouns": any(pronoun in text.lower() for pronoun in ['그것', '그거', '이것', '이거', '그 프로젝트']),
+#             "is_question": '?' in text,
+#             "has_temporal_reference": any(ref in text.lower() for ref in ['방금', '아까', '전에']),
+#             "note": "컨텍스트 자동 판단을 제거했으므로 항상 대화 히스토리를 전송합니다."
+#         }
+#     }
 
-@router.post("/debug/context-test")
-async def debug_context_test(
-    chat_request: ChatRequest,
-    current_user: dict = Depends(get_current_user)
-):
-    """컨텍스트 구성과 전달을 디버깅합니다."""
-    user_id = str(current_user["_id"])
+# @router.post("/debug/context-test")
+# async def debug_context_test(
+#     chat_request: ChatRequest,
+#     current_user: dict = Depends(get_current_user)
+# ):
+#     """컨텍스트 구성과 전달을 디버깅합니다."""
+#     user_id = str(current_user["_id"])
     
-    # DB에서 최대 6개 대화 히스토리 가져오기
-    history = await conversation_manager.get_conversation_history(user_id, limit=6)
+#     # DB에서 최대 6개 대화 히스토리 가져오기
+#     history = await conversation_manager.get_conversation_history(user_id, limit=6)
     
-    # Agent로 전달될 데이터 구성 (항상 컨텍스트 포함)
-    agent_request = {
-        "text": chat_request.message,
-        "user_id": user_id,
-        "conversation_history": history,
-        "use_conversation_context": True  # 항상 True
-    }
+#     # Agent로 전달될 데이터 구성 (항상 컨텍스트 포함)
+#     agent_request = {
+#         "text": chat_request.message,
+#         "user_id": user_id,
+#         "conversation_history": history,
+#         "use_conversation_context": True  # 항상 True
+#     }
     
-    return {
-        "message": chat_request.message,
-        "always_sends_context": True,  # 항상 전송
-        "history_count": len(history),
-        "agent_request": agent_request,
-        "recent_conversations": [
-            {
-                "user": item["user"][:50] + "..." if len(item["user"]) > 50 else item["user"],
-                "assistant": item["assistant"][:50] + "..." if len(item["assistant"]) > 50 else item["assistant"]
-            }
-            for item in history[-3:]
-        ],
-        "note": "컨텍스트 필요성 판단을 제거하여 항상 최대 6개의 대화 히스토리를 전송합니다."
-    }
+#     return {
+#         "message": chat_request.message,
+#         "always_sends_context": True,  # 항상 전송
+#         "history_count": len(history),
+#         "agent_request": agent_request,
+#         "recent_conversations": [
+#             {
+#                 "user": item["user"][:50] + "..." if len(item["user"]) > 50 else item["user"],
+#                 "assistant": item["assistant"][:50] + "..." if len(item["assistant"]) > 50 else item["assistant"]
+#             }
+#             for item in history[-3:]
+#         ],
+#         "note": "컨텍스트 필요성 판단을 제거하여 항상 최대 6개의 대화 히스토리를 전송합니다."
+#     }
