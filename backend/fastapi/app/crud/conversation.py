@@ -9,6 +9,11 @@ class ConversationManager:
     
     async def add_message(self, user_id: str, user_message: str, assistant_response: str):
         """대화에 메시지를 추가합니다."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"add_message 호출: user_id={user_id}, user_message={user_message[:50]}..., assistant_response={assistant_response[:50]}...")
+        
         message_doc = {
             "user_id": user_id,
             "user_message": user_message,
@@ -16,8 +21,15 @@ class ConversationManager:
             "timestamp": datetime.utcnow()
         }
         
-        result = await self.conversations_collection.insert_one(message_doc)
-        return str(result.inserted_id)
+        logger.info(f"DB에 저장할 문서: {message_doc}")
+        
+        try:
+            result = await self.conversations_collection.insert_one(message_doc)
+            logger.info(f"저장 성공: inserted_id={result.inserted_id}")
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"DB 저장 실패: {str(e)}")
+            raise
     
     async def get_conversation_history(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """사용자의 대화 히스토리를 가져옵니다."""
