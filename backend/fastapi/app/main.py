@@ -36,7 +36,7 @@ app.include_router(nosql_mcp.router)
 app.include_router(nosql_select.router)
 app.include_router(nosql_env.router)
 app.include_router(chat_bot.router)
-app.include_router(conversational_chat_bot.router)
+# app.include_router(conversational_chat_bot.router)
 
 # 시작 시 인덱스 생성
 @app.on_event("startup")

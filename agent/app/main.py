@@ -134,16 +134,16 @@ async def shutdown_event():
         await srv.cleanup()
 
 # 메시지 처리 핸들러: 단순히 global agent 사용
-@app.post("/agent-query")
-async def query_agent(payload: dict):
-    if agent is None: raise HTTPException(503, "Agent가 초기화되지 않았습니다.")
-    text = payload.get("text")
-    if not text: raise HTTPException(400, "'text' 필드가 필요합니다.")
-    result = await Runner.run(agent, text)
-    return {"response": result.final_output}
+# @app.post("/agent-query")
+# async def query_agent(payload: dict):
+#     if agent is None: raise HTTPException(503, "Agent가 초기화되지 않았습니다.")
+#     text = payload.get("text")
+#     if not text: raise HTTPException(400, "'text' 필드가 필요합니다.")
+#     result = await Runner.run(agent, text)
+#     return {"response": result.final_output}
 
 # 메시지 처리 핸들러: Backend에서 conversation_history를 전달받아 처리
-@app.post("/agent-query-test")
+@app.post("/agent-query")
 async def query_agent(payload: AgentRequest):
     if agent is None: 
         raise HTTPException(503, "Agent가 초기화되지 않았습니다.")
