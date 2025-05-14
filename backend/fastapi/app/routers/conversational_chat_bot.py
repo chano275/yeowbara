@@ -10,6 +10,13 @@ from crud.conversation import conversation_manager
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
+# 커스텀 JSON 인코더
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 logger = logging.getLogger(__name__)
 
 # 응답 모델 확장
@@ -104,7 +111,7 @@ async def conversational_chat(
             "curl", "-s", "-X", "POST", 
             settings.AGENT_URL,
             "-H", "Content-Type: application/json",
-            "-d", json.dumps(agent_request)
+            "-d", json.dumps(agent_request, cls=DateTimeEncoder)
         ]
         
         try:
@@ -112,10 +119,10 @@ async def conversational_chat(
         except subprocess.TimeoutExpired:
             logger.error(f"kubectl 명령 타임아웃 - 사용자: {user_id}")
             return ConversationalChatResponse(
-                response="요청 처리 시간이 초과되었습니다. 다시 시도해주세요.",
-                timestamp=datetime.utcnow(),
-                had_context=True,  # 항상 컨텍스트 포함
-                session_info={"error": True, "error_type": "timeout"}
+            response="요청 처리 시간이 초과되었습니다. 다시 시도해주세요.",
+            timestamp=datetime.now(),
+            had_context=True,  # 항상 컨텍스트 포함
+            session_info={"error": True, "error_type": "timeout"}
             )
         
         if result.returncode != 0:
@@ -123,7 +130,7 @@ async def conversational_chat(
             logger.error(f"오류 내용: {result.stderr}")
             return ConversationalChatResponse(
                 response=f"명령 실행 실패: Agent와 통신할 수 없습니다.",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(),
                 had_context=True,  # 항상 컨텍스트 포함
                 session_info={"error": True, "error_type": "agent_communication"}
             )
@@ -138,7 +145,7 @@ async def conversational_chat(
                 bot_response = "Agent에서 빈 응답을 받았습니다."
                 return ConversationalChatResponse(
                     response=bot_response,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(),
                     had_context=True,  # 항상 컨텍스트 포함
                     session_info={"error": True, "error_type": "empty_response"}
                 )
@@ -148,7 +155,7 @@ async def conversational_chat(
             bot_response = "Agent 응답을 파싱할 수 없습니다."
             return ConversationalChatResponse(
                 response=bot_response,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(),
                 had_context=True,  # 항상 컨텍스트 포함
                 session_info={
                     "error": True,
@@ -184,7 +191,7 @@ async def conversational_chat(
         
         return ConversationalChatResponse(
             response=bot_response if bot_response is not None else "알 수 없는 오류가 발생했습니다.",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(),
             had_context=True,  # 항상 컨텍스트 포함
             session_info={
                 "db_managed": True,
@@ -200,7 +207,7 @@ async def conversational_chat(
         
         return ConversationalChatResponse(
             response=f"대화 처리 중 오류가 발생했습니다: {str(e)}",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(),
             had_context=False,
             session_info={"error": True, "error_type": "internal_error"}
         )
@@ -263,14 +270,14 @@ async def get_conversation_status(current_user: dict = Depends(get_current_user)
                 **summary,
                 "managed_by": "database"
             },
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now()
         }
     except Exception as e:
         logger.error(f"대화 상태 조회 오류: {e}")
         return {
             "user_id": user_id,
             "conversation_summary": {"error": str(e), "managed_by": "database"},
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now()
         }
 
 # 개발/디버깅 엔드포인트들은 그대로 유지

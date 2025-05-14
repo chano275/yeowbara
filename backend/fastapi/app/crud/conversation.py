@@ -18,7 +18,7 @@ class ConversationManager:
             "user_id": user_id,
             "user_message": user_message,
             "assistant_response": assistant_response,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now()
         }
         
         logger.info(f"DB에 저장할 문서: {message_doc}")
@@ -49,23 +49,23 @@ class ConversationManager:
                 # 방법 1: user_message, assistant_response 사용
                 if "user_message" in doc and "assistant_response" in doc:
                     messages.append({
-                        "user": doc["user_message"],
-                        "assistant": doc["assistant_response"],
-                        "timestamp": doc.get("timestamp", datetime.utcnow())
+                    "user": doc["user_message"],
+                    "assistant": doc["assistant_response"],
+                    "timestamp": doc.get("timestamp", datetime.now()).isoformat() if isinstance(doc.get("timestamp", datetime.now()), datetime) else doc.get("timestamp", datetime.now().isoformat())
                     })
                 # 방법 2: user_message, assistant_message 사용
                 elif "user_message" in doc and "assistant_message" in doc:
                     messages.append({
                         "user": doc["user_message"],
                         "assistant": doc["assistant_message"],
-                        "timestamp": doc.get("timestamp", datetime.utcnow())
+                        "timestamp": doc.get("timestamp", datetime.now()).isoformat() if isinstance(doc.get("timestamp", datetime.now()), datetime) else doc.get("timestamp", datetime.now().isoformat())
                     })
                 # 방법 3: user, assistant 사용
                 elif "user" in doc and "assistant" in doc:
                     messages.append({
                         "user": doc["user"],
                         "assistant": doc["assistant"],
-                        "timestamp": doc.get("timestamp", datetime.utcnow())
+                        "timestamp": doc.get("timestamp", datetime.now()).isoformat() if isinstance(doc.get("timestamp", datetime.now()), datetime) else doc.get("timestamp", datetime.now().isoformat())
                     })
                 else:
                     logger.warning(f"알 수 없는 문서 형태: {doc}")
@@ -105,13 +105,14 @@ class ConversationManager:
             try:
                 # timestamp 필드 처리
                 if "timestamp" in last_message:
-                    summary["last_activity"] = last_message["timestamp"]
+                    timestamp = last_message["timestamp"]
+                    summary["last_activity"] = timestamp.isoformat() if isinstance(timestamp, datetime) else timestamp
                 else:
                     logger.warning(f"timestamp 필드가 없는 문서: {last_message}")
-                    summary["last_activity"] = datetime.utcnow()
+                    summary["last_activity"] = datetime.now().isoformat()
             except Exception as e:
                 logger.error(f"last_activity 처리 오류: {e}")
-                summary["last_activity"] = datetime.utcnow()
+                summary["last_activity"] = datetime.now().isoformat()
         
         return summary
 
