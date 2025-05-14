@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useNavigate } from "react-router-dom"
-import { User, AlertTriangle, ArrowLeft, CheckCircle2, XCircle } from "lucide-react"
+import { User, AlertTriangle, ArrowLeft, CheckCircle2, XCircle, Loader2 } from "lucide-react"
 import api from "../../api/api"
 import {
   Dialog,
@@ -22,6 +22,8 @@ export default function MyPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [passwordsMatch, setPasswordsMatch] = useState(true)
   const [passwordError, setPasswordError] = useState("")
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   // 비밀번호 일치 여부 확인
   const checkPasswordMatch = () => {
@@ -94,10 +96,11 @@ export default function MyPage() {
     
     // 로딩 상태 표시 등을 위한 상태 추가
     setPasswordError("")
+    setIsLoading(true)
     
     try {
       // API 호출 (실제 엔드포인트에 맞게 조정)
-      const response = await api.put('/users/change-password', {
+      const response = await api.put('/api/users/change-password', {
         current_password: currentPassword,
         new_password: newPassword
       })
@@ -136,13 +139,17 @@ export default function MyPage() {
         // 요청 전송 과정에서 오류가 발생한 경우
         setPasswordError("요청 처리 중 오류가 발생했습니다")
       }
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const handleDeleteAccount = async () => {
     try {
-      await api.delete('/users/me')
+      await api.delete('/api/users/me')
       localStorage.removeItem('access_token')
+      localStorage.removeItem('mcpServices')
+      localStorage.removeItem('chatHistory')
       navigate("/")
     } catch (error) {
       console.error('Account deletion failed:', error)
@@ -234,13 +241,25 @@ export default function MyPage() {
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+              disabled={isLoading}
             >
-              정보 수정
+              {isLoading ? (
+                <span className="flex items-center justify-center">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  수정 중...
+                </span>
+              ) : (
+                "정보 수정"
+              )}
             </Button>
           </form>
 
           <div className="mt-6 pt-6 border-t border-gray-700">
-            <Dialog>
+            <Dialog onOpenChange={(open: boolean) => {
+              if (!open) {
+                setDeleteConfirmText("")
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button
                   variant="destructive"
@@ -250,18 +269,29 @@ export default function MyPage() {
                   회원 탈퇴
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-gray-900 text-white border-gray-700">
-                <DialogHeader>
+              <DialogContent className="bg-gray-900 text-white border-gray-700 w-[480px] max-w-[90vw] mx-auto">
+                <DialogHeader className="space-y-1">
                   <DialogTitle>회원 탈퇴</DialogTitle>
                   <DialogDescription className="text-gray-400">
                     정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+                    <br />
+                    탈퇴를 진행하시려면 아래 입력창에 "탈퇴하기"를 입력해주세요.
                   </DialogDescription>
                 </DialogHeader>
-                <DialogFooter>
+                <div className="py-4">
+                  <Input
+                    value={deleteConfirmText}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeleteConfirmText(e.target.value)}
+                    placeholder="탈퇴하기"
+                    className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 w-[200px] mx-auto text-center"
+                  />
+                </div>
+                <DialogFooter className="flex justify-center w-full p-0">
                   <Button
                     variant="destructive"
                     onClick={handleDeleteAccount}
-                    className="bg-red-600 hover:bg-red-700"
+                    className="bg-red-600 hover:bg-red-700 w-[200px] mx-auto"
+                    disabled={deleteConfirmText !== "탈퇴하기"}
                   >
                     탈퇴하기
                   </Button>
