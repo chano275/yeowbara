@@ -38,6 +38,15 @@ async_envs_collection = async_db["envs"]
 select_mcps_collection = db["select_mcps"]
 async_select_mcps_collection = async_db["select_mcps"]
 
+# 대화 관련 컨렉션
+conversations_collection = db["conversations"]
+async_conversations_collection = async_db["conversations"]
+
+# 데이터베이스 연결을 반환하는 함수
+def get_database():
+    """MongoDB 비동기 데이터베이스 연결을 반환합니다."""
+    return async_db
+
 # 인덱스 생성 함수
 async def create_indexes():
     # mcp_manuals, mcp_scripts의 mcp_id에 유니크 인덱스 생성 (1:1 관계 강제)
@@ -49,3 +58,7 @@ async def create_indexes():
     
     # select_mcps의 user_id+mcp_id에 복합 인덱스 생성
     await async_select_mcps_collection.create_index([("user_id", 1), ("mcp_id", 1)], unique=True)
+    
+    # conversations에 user_id 인덱스 생성 (대화 히스토리 조회 최적화)
+    await async_conversations_collection.create_index("user_id")
+    await async_conversations_collection.create_index([("user_id", 1), ("timestamp", -1)])  # 사용자별 + 시간순

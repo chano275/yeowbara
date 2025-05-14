@@ -4,7 +4,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from routers import nosql_auth, nosql_user, nosql_mcp, nosql_select, nosql_env, chat_bot,conversational_chat_bot, db_chat_bot
+from routers import nosql_auth, nosql_user, nosql_mcp, nosql_select, nosql_env, conversational_chat_bot
 from core.config import settings
 from crud.nosql import create_nosql_indexes
 
@@ -35,9 +35,7 @@ app.include_router(nosql_user.router)
 app.include_router(nosql_mcp.router)
 app.include_router(nosql_select.router)
 app.include_router(nosql_env.router)
-app.include_router(chat_bot.router)
 app.include_router(conversational_chat_bot.router)
-app.include_router(db_chat_bot.router)
 
 # 시작 시 인덱스 생성
 @app.on_event("startup")
