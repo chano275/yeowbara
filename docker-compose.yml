@@ -1,0 +1,65 @@
+services:
+  fastapi:
+    build:
+      context: ./backend/fastapi
+      dockerfile: Dockerfile
+    container_name: fastapi
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/ubuntu/.kube:/root/.kube:ro
+    environment:
+      # Agent Operator에서 던질 사용자별 ENV
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NOTION_API_TOKEN=${NOTION_API_TOKEN}
+
+
+      # MongoDB 연결 정보
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGO_DB_PASSWORD=${MONGO_DB_PASSWORD}
+      - MONGO_DB_USER_NAME=${MONGO_DB_USER_NAME}
+      - DATABASE_NAME=${DATABASE_NAME}
+
+      # JWT 설정
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - DEPLOY_SERVER_URL=${DEPLOY_SERVER_URL}
+
+      # GMS 설정
+      - GMS_KEY=${GMS_KEY}
+      - GMS_API_BASE=${GMS_API_BASE}
+
+      # AGENT 설정
+      - AGENT_URL=${AGENT_URL}
+
+      # CORS 설정
+      - CORS_ORIGINS=${CORS_ORIGINS}
+
+  react:
+    build:
+      context: ./frontend/react
+      dockerfile: Dockerfile
+    container_name: react
+    ports:
+      - "5173:5173" # Vite dev server 기본 포트
+    environment:
+      - HOST=0.0.0.0 # Vite 외부 접속 허용
+    command: npm run dev
+
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    depends_on:
+      - fastapi
+    ports:
+      - "80:80"
+    #   - "443:443"
+    # volumes:
+    #   # SSL 인증서 마운트 (EC2 호스트 → 컨테이너 내부)
+    #   - /etc/letsencrypt/live/p.ssafy.io/fullchain.pem:/etc/nginx/ssl/fullchain.pem:ro
+    #   - /etc/letsencrypt/live/p.ssafy.io/privkey.pem:/etc/nginx/ssl/privkey.pem:ro

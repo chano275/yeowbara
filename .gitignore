@@ -1,0 +1,31 @@
+# 1) OS / Editor / Common
+.DS_Store
+Thumbs.db
+
+# 2) Logs
+*.log
+logs/
+
+# 3) Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+data/
+
+# 4) Node / React Native
+node_modules/
+npm-debug.log
+yarn-error.log
+android/
+ios/
+.expo/
+.expo-shared/
+
+# 5) Docker
+.env
+docker-compose.override.yml
+
+# 6) 기타
+my.cnf

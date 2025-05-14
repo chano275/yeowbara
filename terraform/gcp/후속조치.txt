@@ -1,0 +1,17 @@
+sudo kubeadm reset -f
+
+# containerd 설정 백업
+sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.bak
+
+# 설정 초기화 및 재생성
+sudo rm /etc/containerd/config.toml
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+# CRI 플러그인 활성화 및 systemd cgroup 활성화 
+sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/config.toml
+
+# 서비스 재시작
+sudo systemctl restart containerd
+sudo systemctl restart kubelet
+
+sudo kubeadm join k12b107.p.ssafy.io:6443 --token 2649av.fegkl8o3h46gccoq --discovery-token-ca-cert-hash sha256:42577587792472850a6f1511c81480b06d14803b3d78322c853d44edd0b9ef4c
