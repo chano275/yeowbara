@@ -91,9 +91,11 @@ async def chat_with_history(
         # 5. Agent 응답 처리
         try:
             if result.stdout.strip():
+                logger.info(f"Agent 원본 응답: {result.stdout[:500]}...")
                 response_data = json.loads(result.stdout)
                 agent_response = response_data.get("response", result.stdout.strip())
             else:
+                logger.error("Agent에서 빈 응답을 받았습니다.")
                 raise HTTPException(
                     status_code=500,
                     detail="Agent에서 빈 응답을 받았습니다."
@@ -101,10 +103,8 @@ async def chat_with_history(
         except json.JSONDecodeError as e:
             logger.error(f"Agent 응답 파싱 오류: {e}")
             logger.error(f"원본 응답: {result.stdout}")
-            raise HTTPException(
-                status_code=500,
-                detail="Agent 응답 형식 오류"
-            )
+            # JSON 파싱 실패시 일반 텍스트로 처리
+            agent_response = result.stdout.strip() if result.stdout.strip() else "Agent 응답을 받을 수 없습니다."
         
         # 6. DB에 대화 저장
         saved = await save_conversation_message(
@@ -208,3 +208,70 @@ async def get_conversation_statistics(
             status_code=500,
             detail=f"통계 조회 오류: {str(e)}"
         )
+
+@router.post("/debug/agent-test")
+async def debug_agent_test(
+    chat_request: ChatRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """디버그용 Agent 테스트 엔드포인트"""
+    user_id = str(current_user["_id"])
+    
+    try:
+        # 사용자 Pod 정보 확인
+        user = await get_user_by_id(user_id)
+        if not user.get("pod_name"):
+            return {
+                "error": "Pod가 생성되지 않았습니다.",
+                "user_id": user_id
+            }
+        
+        pod_name = user["pod_name"]
+        
+        # 최신 대화 히스토리 조회
+        recent_conversations = await get_recent_conversations(user_id, limit=6)
+        
+        # Agent에 전송할 데이터 구성
+        agent_data = {
+            "text": chat_request.message,
+            "user_id": user_id,
+        }
+        
+        if recent_conversations:
+            agent_data["conversation_history"] = recent_conversations
+            agent_data["use_conversation_context"] = True
+        else:
+            agent_data["new_conversation"] = True
+        
+        # kubectl + curl로 Agent 호출
+        json_str = json.dumps(agent_data)
+        cmd = [
+            "kubectl", "exec", pod_name,
+            "-n", "agent-env",
+            "-c", "agent",
+            "--",
+            "curl", "-s", "-X", "POST",
+            settings.AGENT_URL,
+            "-H", "Content-Type: application/json",
+            "-d", json_str
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        return {
+            "request_data": agent_data,
+            "pod_name": pod_name,
+            "cmd_executed": ' '.join(cmd[:6]) + ' ... [JSON_DATA]',
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "has_history": bool(recent_conversations),
+            "history_count": len(recent_conversations)
+        }
+        
+    except Exception as e:
+        logger.exception(f"Agent 테스트 오류 - 사용자: {user_id}")
+        return {
+            "error": str(e),
+            "user_id": user_id
+        }
