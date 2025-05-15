@@ -22,29 +22,31 @@ class ConversationManager:
         }
         
         try:
-            # 사용자 문서 찾기 또는 생성
-            result = await self.conversations_collection.update_one(
-                {"user_id": user_id},
-                {
-                    "$push": {"messages": new_message},
-                    "$set": {"updated_at": datetime.now()},
-                    "$setOnInsert": {
-                        "user_id": user_id,
-                        "created_at": datetime.now(),
-                        "messages": []
-                    }
-                },
-                upsert=True
-            )
+            # 먼저 사용자 문서가 있는지 확인
+            existing_doc = await self.conversations_collection.find_one({"user_id": user_id})
             
-            if result.upserted_id:
-                logger.info(f"새 사용자 문서 생성: user_id={user_id}, doc_id={result.upserted_id}")
-                return str(result.upserted_id)
+            if existing_doc:
+                # 기존 문서가 있으면 메시지 추가
+                result = await self.conversations_collection.update_one(
+                    {"user_id": user_id},
+                    {
+                        "$push": {"messages": new_message},
+                        "$set": {"updated_at": datetime.now()}
+                    }
+                )
+                logger.info(f"기존 문서에 메시지 추가: user_id={user_id}, modified_count={result.modified_count}")
+                return str(existing_doc["_id"])
             else:
-                logger.info(f"기존 사용자 문서에 메시지 추가: user_id={user_id}")
-                # 문서 ID 가져오기
-                doc = await self.conversations_collection.find_one({"user_id": user_id})
-                return str(doc["_id"]) if doc else None
+                # 새 문서 생성
+                new_doc = {
+                    "user_id": user_id,
+                    "messages": [new_message],
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+                result = await self.conversations_collection.insert_one(new_doc)
+                logger.info(f"새 문서 생성: user_id={user_id}, doc_id={result.inserted_id}")
+                return str(result.inserted_id)
                 
         except Exception as e:
             logger.error(f"메시지 저장 실패: {str(e)}")
