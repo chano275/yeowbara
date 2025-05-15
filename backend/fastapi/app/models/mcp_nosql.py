@@ -70,10 +70,14 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
 
-# 채팅 메시지 스키마
+# 기본 메시지 요청 모델 (session_id 없음)
+class MessageRequest(BaseModel):
+    message: str
+
+# 채팅 메시지 스키마 (하위 호환성을 위해 session_id 포함)
 class ChatRequest(BaseModel):
     message: str
-    session_id: Optional[str] = None  # 세션 ID 추가
+    session_id: Optional[str] = None  # 기존 /chat 엔드포인트에서 선택적 사용
 
 # 채팅 응답 스키마
 class ChatResponse(BaseModel):
@@ -132,7 +136,8 @@ class UserConversation(BaseModel):
 class ConversationalChatResponse(BaseModel):
     response: str
     timestamp: datetime
-    session_id: str
-    session_name: str
+    session_id: Optional[str] = None
+    session_name: Optional[str] = None
     conversation_count: int = 0  # 총 대화 수
     used_history: bool = False   # 히스토리를 사용했는지 여부
+    had_context: bool = False    # 하위 호환성을 위해

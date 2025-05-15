@@ -6,7 +6,8 @@ from datetime import datetime
 from routers.nosql_auth import get_current_user
 from models.mcp_nosql import (
     ChatRequest, ChatResponse, ConversationalChatResponse,
-    SessionCreateRequest, SessionUpdateRequest, SessionInfo, SessionListResponse
+    MessageRequest, SessionCreateRequest, SessionUpdateRequest, 
+    SessionInfo, SessionListResponse
 )
 from core.config import settings
 from crud.conversation import conversation_manager
@@ -177,7 +178,7 @@ async def get_session_history(
 @router.post("/sessions/{session_id}/chat", response_model=ConversationalChatResponse)
 async def session_chat(
     session_id: str,
-    chat_request: ChatRequest,
+    message_request: MessageRequest,  # MessageRequest 사용 (session_id 없음)
     current_user: dict = Depends(get_current_user)
 ):
     """특정 세션에서 대화를 진행합니다."""
@@ -185,7 +186,7 @@ async def session_chat(
     bot_response = None
     
     try:
-        logger.info(f"세션 대화 요청 - 사용자: {user_id}, 세션: {session_id}, 메시지: {chat_request.message}")
+        logger.info(f"세션 대화 요청 - 사용자: {user_id}, 세션: {session_id}, 메시지: {message_request.message}")
         
         # 사용자 정보 조회
         from crud.nosql import get_user_by_id
@@ -209,7 +210,7 @@ async def session_chat(
         
         # Agent에 요청
         agent_request = {
-            "text": chat_request.message,
+            "text": message_request.message,
             "user_id": user_id,
             "conversation_history": conversation_history,
             "use_conversation_context": True,
@@ -272,7 +273,7 @@ async def session_chat(
                 
                 await conversation_manager.add_message(
                     user_id=user_id,
-                    user_message=chat_request.message,
+                    user_message=message_request.message,
                     assistant_response=bot_response,
                     session_id=session_id
                 )
@@ -347,7 +348,7 @@ async def create_pod(current_user: dict = Depends(get_current_user)):
 
 @router.post("/chat", response_model=ConversationalChatResponse)
 async def conversational_chat(
-    chat_request: ChatRequest, 
+    chat_request: ChatRequest,  # ChatRequest 사용 (session_id 포함 가능)
     current_user: dict = Depends(get_current_user)
 ):
     """기본 세션에서 대화를 진행합니다. ChatRequest에 session_id가 있으면 해당 세션 사용."""
@@ -360,8 +361,9 @@ async def conversational_chat(
         default_session = await conversation_manager._get_or_create_default_session(user_id)
         session_id = default_session
     
-    # 세션 기반 대화 엔드포인트로 위임
-    return await session_chat(session_id, chat_request, current_user)
+    # MessageRequest로 변환하여 세션 기반 대화 엔드포인트로 위임
+    message_request = MessageRequest(message=chat_request.message)
+    return await session_chat(session_id, message_request, current_user)
 
 @router.get("/chat/history", response_model=ChatHistoryResponse)
 async def get_conversation_history(current_user: dict = Depends(get_current_user)):
