@@ -38,7 +38,7 @@ async def delete_pod(user_id: str) -> Dict[str, Any]:
         
         # kubectl 명령어로 Pod 삭제
         cmd = [
-            "kubectl", "delete", "pod", pod_name,
+            "kubectl", "delete", "deployment", f'agent-{user_id}',
             "-n", "agent-env",
             "--ignore-not-found"
         ]
