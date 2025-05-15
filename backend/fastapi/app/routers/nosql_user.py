@@ -83,6 +83,50 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.post("/logout", response_model=Dict[str, Any])
+async def log_out(current_user: dict = Depends(get_current_user)):
+    """현재 사용자 로그아웃 및 Pod 삭제"""
+    try:
+        user_id = str(current_user["_id"])
+        
+        # Pod 삭제 함수 호출
+        from core.delete_pod import delete_pod
+        
+        try:
+            # Pod 삭제 시도
+            delete_result = await delete_pod(user_id)
+            
+            if delete_result.get("success", False):
+                logger.info(f"Pod 삭제 성공 - 사용자: {user_id}")
+                message = "로그아웃 및 Pod 삭제가 성공적으로 완료되었습니다."
+            else:
+                logger.warning(f"Pod 삭제 실패 - 사용자: {user_id}, 오류: {delete_result.get('message')}")
+                message = "로그아웃은 완료되었으나 Pod 삭제에 실패했습니다."
+                
+        except ImportError:
+            # delete_pod 함수가 없는 경우
+            logger.warning(f"delete_pod 함수를 찾을 수 없음 - 사용자: {user_id}")
+            message = "로그아웃은 완료되었으나 Pod 삭제 기능을 찾을 수 없습니다."
+            
+        except Exception as e:
+            # Pod 삭제 중 오류 발생
+            logger.error(f"Pod 삭제 중 예외 발생 - 사용자: {user_id}, 오류: {str(e)}")
+            message = "로그아웃은 완료되었으나 Pod 삭제 중 오류가 발생했습니다."
+        
+        # 로그아웃 성공 응답 (Pod 삭제 실패와 관계없이)
+        return {
+            "success": True,
+            "message": message
+        }
+        
+    except Exception as e:
+        logger.error(f"로그아웃 중 예외 발생 - 오류: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="로그아웃 중 오류가 발생했습니다"
+        )
+    
+
 @router.get("/me", response_model=User)
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     """현재 인증된 사용자의 정보를 조회합니다."""
