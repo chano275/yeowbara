@@ -217,12 +217,20 @@ export default function ChatPage() {
     }
   }
 
-  const handleLogout = () => {
-    // 로그아웃 시 스토리지 클리어
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('mcpServices')
-    localStorage.removeItem('chatHistory')  // 변경된 키 사용
-    navigate("/login")
+  const handleLogout = async () => {
+    try {
+      // API 요청 보내기
+      await api.post("/api/users/logout")
+      
+      // 로그아웃 시 스토리지 클리어
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('mcpServices')
+      localStorage.removeItem('chatHistory')
+      navigate("/login")
+    } catch (error) {
+      console.error("로그아웃 중 오류 발생:", error)
+      alert("로그아웃에 실패했습니다. 다시 시도해주세요.")
+    }
   }
 
   const handleNavigateToMyPage = () => {
