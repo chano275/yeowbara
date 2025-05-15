@@ -263,7 +263,15 @@ async def session_chat(
                 if "error" in response_data.get("error", "").lower() or "Error" in bot_response:
                     # 에러 메시지를 요약하기 위해 다시 Agent에 요청
                     error_summary_request = {
-                        "text": f"다음 에러 메시지를 사용자가 이해하기 쉽게 간단히 설명해주세요. 기술적인 용어는 피하고 문제 상황과 해결 방법을 제시해주세요: {bot_response}",
+                        "text": f"""다음 에러 메시지를 사용자에게 친근하고 간결하게 설명해주세요:
+
+에러 메시지: {bot_response}
+
+요구사항:
+1. '문제 상황:', '해결 방법:' 같은 반복적인 라벨은 사용하지 말고 자연스럽게 설명하세요
+2. 최대 2문장으로 요약하세요
+3. 예시: "필요한 자료를 찾을 수 없어 작업을 진행할 수 없습니다. 저장소 이름이나 경로가 정확한지 다시 확인하고, 올바른 경로나 이름을 입력해 주세요."
+""",
                         "user_id": user_id,
                         "conversation_history": [],
                         "use_conversation_context": False,
