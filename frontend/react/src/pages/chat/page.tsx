@@ -428,15 +428,15 @@ export default function ChatPage() {
       }} />
 
       {/* MCP 서비스 사이드바 */}
-      <div className={`fixed left-0 top-16 bottom-0 w-64 bg-gray-900/95 border-r border-gray-800 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-4">
+      <div className={`fixed left-0 top-16 bottom-0 w-64 bg-gray-900/90 border-r border-gray-800 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-4 h-full flex flex-col">
           <h2 className="text-lg font-semibold text-white mb-4">채팅 가이드라인</h2>
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-y-auto flex-1">
             {services.map((service) => (
               <div
                 key={service.id}
                 onClick={() => handleServiceSelect(service.id)}
-                className="p-3 rounded-lg cursor-pointer bg-gray-800/50 text-white hover:bg-gray-800 transition-colors"
+                className="p-3 rounded-lg cursor-pointer bg-gray-800/80 text-white hover:bg-gray-700 transition-colors"
               >
                 <div className="flex items-center justify-between">
                   <div>
