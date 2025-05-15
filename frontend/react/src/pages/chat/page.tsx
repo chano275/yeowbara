@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { LogOut, Settings, Send, User, Cog, Trash2, RefreshCw } from "lucide-react"
+import { LogOut, Settings, Send, User, Cog, Trash2, RefreshCw, Menu, ChevronRight } from "lucide-react"
 import type { McpService } from "@/types/mcp"
 import api from "../../api/api"
 import {
@@ -12,6 +12,7 @@ import {
   PopoverTrigger
 } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 // 로딩 애니메이션용 CSS 스타일 추가
 const loadingDotsStyle = {
@@ -68,6 +69,10 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedService, setSelectedService] = useState<string | null>(null)
+  const [guideModalOpen, setGuideModalOpen] = useState(false);
+  const [guideService, setGuideService] = useState<McpService | null>(null);
 
   // 페이지 로드 시 로컬 스토리지에서 채팅 내역 불러오기
   useEffect(() => {
@@ -295,6 +300,37 @@ export default function ChatPage() {
     console.log("채팅 내역이 초기화되었습니다.");
   };
 
+  // MCP 서비스 목록 로드
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const response = await api.get("/api/mcps/")
+        // McpServiceResponse[] → McpService[]로 변환
+        const formatted = response.data.map((service: any) => ({
+          id: service.public_id,
+          name: service.name,
+          description: service.description,
+          icon: service.mcp_type,
+          active: service.active ?? false,
+          is_selected: service.is_selected ?? false,
+          required_env_vars: (service.required_env_vars || []).map((key: string) => ({ key, value: "" }))
+        }))
+        setServices(formatted)
+      } catch (error) {
+        console.error("MCP 서비스 로드 실패:", error)
+      }
+    }
+    loadServices()
+  }, [])
+
+  // 서비스 선택 시 모달로 가이드 표시
+  const handleServiceSelect = (serviceId: string) => {
+    const service = services.find(s => s.id === serviceId)
+    if (!service) return
+    setGuideService(service)
+    setGuideModalOpen(true)
+  }
+
   return (
     <div className="min-h-screen bg-black flex flex-col relative">
       {/* 별 배경 - fixed로 변경하여 스크롤해도 배경이 유지되도록 수정 */}
@@ -305,8 +341,19 @@ export default function ChatPage() {
 
       {/* 헤더 - z-index를 높여서 가장 앞에 표시 */}
       <header className="fixed top-0 left-0 right-0 w-full z-50 p-4 border-b border-gray-800 bg-black">
-        <div className="container mx-auto flex justify-between items-center">
-          <h1 className="text-xl font-bold text-white">여봐라</h1>
+        <div className="w-full flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+              title="사이드바 토글"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h1 className="text-xl font-bold text-white">여봐라</h1>
+          </div>
           <div className="flex space-x-2">
             {/* 대화 내역 삭제 버튼 */}
             <Button
@@ -314,7 +361,7 @@ export default function ChatPage() {
               size="icon"
               onClick={clearChatHistory}
               className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
-              title="대화 내역 삭제"
+             title="대화 내역 삭제"
             >
               <Trash2 className="h-5 w-5 text-red-400" />
             </Button>
@@ -380,8 +427,32 @@ export default function ChatPage() {
         `
       }} />
 
+      {/* MCP 서비스 사이드바 */}
+      <div className={`fixed left-0 top-16 bottom-0 w-64 bg-gray-900/95 border-r border-gray-800 z-40 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-4">
+          <h2 className="text-lg font-semibold text-white mb-4">채팅 가이드라인</h2>
+          <div className="space-y-2">
+            {services.map((service) => (
+              <div
+                key={service.id}
+                onClick={() => handleServiceSelect(service.id)}
+                className="p-3 rounded-lg cursor-pointer bg-gray-800/50 text-white hover:bg-gray-800 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{service.name}</p>
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-1">{service.description}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-400" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* 채팅 영역 - 헤더와 입력창 높이를 고려한 패딩 추가 */}
-      <div className="flex-1 overflow-y-auto p-4 mt-16 mb-24 z-10 relative">
+      <div className={`flex-1 overflow-y-auto p-4 mt-16 mb-24 z-10 relative transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
         <div className="container mx-auto max-w-4xl">
           <div className="space-y-4">
             {messages.map((message) => (
@@ -423,7 +494,7 @@ export default function ChatPage() {
       </div>
 
       {/* 입력 영역 - 하단에 고정 */}
-      <div className="fixed bottom-0 left-0 right-0 pt-4 pb-4 px-8 border-t border-gray-800 bg-black z-40">
+      <div className={`fixed bottom-0 left-0 right-0 pt-4 pb-4 px-8 border-t border-gray-800 bg-black z-40 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}>
         <div className="container mx-auto max-w-4xl">
           <form onSubmit={handleSendMessage} className="flex space-x-5">
             <Textarea
@@ -445,6 +516,26 @@ export default function ChatPage() {
           </form>
         </div>
       </div>
+
+      {/* 서비스 가이드 모달 */}
+      <Dialog open={guideModalOpen} onOpenChange={setGuideModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{guideService?.name}</DialogTitle>
+            <DialogDescription>{guideService?.description}</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            <h3 className="font-semibold mb-2">사용 가능한 명령어</h3>
+            <ul className="list-disc list-inside space-y-1">
+              {guideService?.commands?.map((cmd: any) => (
+                <li key={cmd.name}>
+                  <span className="font-medium">{cmd.name}</span>: {cmd.description}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
