@@ -258,9 +258,45 @@ async def session_chat(
             if result.stdout.strip():
                 response_data = json.loads(result.stdout)
                 bot_response = response_data.get("response", result.stdout.strip())
+                
+                # 응답에 에러가 포함되어 있는지 확인
+                if "error" in response_data.get("error", "").lower() or "Error" in bot_response:
+                    # 에러 메시지를 요약하기 위해 다시 Agent에 요청
+                    error_summary_request = {
+                        "text": f"다음 에러 메시지를 사용자가 이해하기 쉽게 간단히 설명해주세요. 기술적인 용어는 피하고 문제 상황과 해결 방법을 제시해주세요: {bot_response}",
+                        "user_id": user_id,
+                        "conversation_history": [],
+                        "use_conversation_context": False,
+                        "is_error_summary": True
+                    }
+                    
+                    # 에러 요약 요청
+                    error_cmd = [
+                        "kubectl", "exec", pod_name, 
+                        "-n", "agent-env", 
+                        "-c", "agent", 
+                        "--", 
+                        "curl", "-s", "-X", "POST", 
+                        settings.AGENT_URL,
+                        "-H", "Content-Type: application/json",
+                        "-d", json.dumps(error_summary_request, cls=DateTimeEncoder)
+                    ]
+                    
+                    try:
+                        error_result = subprocess.run(error_cmd, capture_output=True, text=True, timeout=30)
+                        if error_result.returncode == 0 and error_result.stdout.strip():
+                            error_response_data = json.loads(error_result.stdout)
+                            summarized_error = error_response_data.get("response", bot_response)
+                            logger.info(f"에러 메시지 요약 완료: user_id={user_id}")
+                            bot_response = summarized_error
+                        else:
+                            logger.warning(f"에러 요약 실패, 원본 메시지 사용: user_id={user_id}")
+                    except (subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+                        logger.warning(f"에러 요약 중 오류, 원본 메시지 사용: {str(e)}")
+                        
             else:
                 logger.warning(f"빈 응답 - 사용자: {user_id}, 세션: {session_id}")
-                bot_response = "Agent에서 빈 응답을 받았습니다."
+                bot_response = "죄송합니다. 응답을 생성할 수 없었습니다. 다시 시도해 주세요."
         except json.JSONDecodeError as e:
             logger.error(f"JSON 파싱 오류: {e}")
             logger.error(f"원본 응답: {result.stdout}")
