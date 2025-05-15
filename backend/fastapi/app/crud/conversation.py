@@ -49,9 +49,9 @@ class ConversationManager:
                     "session_id": doc["session_id"],
                     "session_name": doc["session_name"],
                     "message_count": len(doc.get("messages", [])),
-                    "created_at": doc["created_at"].isoformat(),
-                    "updated_at": doc["updated_at"].isoformat(),
-                    "last_message": doc["messages"][-1] if doc.get("messages") else None
+                    # "created_at": doc["created_at"].isoformat(),
+                    # "updated_at": doc["updated_at"].isoformat(),
+                    # "last_message": doc["messages"][-1] if doc.get("messages") else None
                 })
             
             logger.info(f"세션 목록 조회: user_id={user_id}, 세션 수={len(sessions)}")

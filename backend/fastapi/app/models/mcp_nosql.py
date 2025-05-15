@@ -113,9 +113,6 @@ class SessionInfo(BaseModel):
     session_id: str
     session_name: str
     message_count: int
-    created_at: str
-    updated_at: str
-    last_message: Optional[Dict[str, Any]] = None
 
 # 세션 목록 응답 모델
 class SessionListResponse(BaseModel):
