@@ -268,6 +268,9 @@ class ConversationManager:
     
     async def _get_or_create_default_session(self, user_id: str) -> str:
         """기본 세션을 찾거나 생성합니다."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # 먼저 기존 세션이 있는지 확인 (하위 호환성)
         existing_doc = await self.conversations_collection.find_one(
             {"user_id": user_id, "session_id": {"$exists": False}}
@@ -285,6 +288,7 @@ class ConversationManager:
                     }
                 }
             )
+            logger.info(f"기존 세션을 default로 변환: user_id={user_id}")
             return default_session_id
         else:
             # default 세션 찾기
@@ -293,10 +297,26 @@ class ConversationManager:
             )
             
             if default_doc:
+                logger.info(f"기존 default 세션 사용: user_id={user_id}")
                 return "default"
             else:
-                # default 세션 생성
-                return await self.create_session(user_id, "기본 대화")
+                # default 세션을 직접 생성 (UUID 대신 "default" 사용)
+                default_session_doc = {
+                    "user_id": user_id,
+                    "session_id": "default",
+                    "session_name": "기본 대화",
+                    "messages": [],
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                }
+                
+                try:
+                    result = await self.conversations_collection.insert_one(default_session_doc)
+                    logger.info(f"새 default 세션 생성: user_id={user_id}")
+                    return "default"
+                except Exception as e:
+                    logger.error(f"default 세션 생성 실패: {str(e)}")
+                    raise
 
     # 하위 호환성을 위한 기존 메서드들
     async def clear_conversation_history(self, user_id: str):
