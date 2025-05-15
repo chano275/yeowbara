@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card"
 import { LogOut, Settings, Send, User, Cog, Trash2, RefreshCw, Menu, ChevronRight } from "lucide-react"
 import type { McpService } from "@/types/mcp"
 import api from "../../api/api"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Popover,
   PopoverContent,
@@ -59,6 +61,53 @@ interface StoredMessage {
   content: string
   sender: "user" | "bot"
   timestamp: string
+}
+
+// 메시지 렌더링을 위한 스타일 추가
+const markdownStyles = {
+  '& pre': {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    padding: '1rem',
+    borderRadius: '0.5rem',
+    overflowX: 'auto',
+  },
+  '& code': {
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    padding: '0.2rem 0.4rem',
+    borderRadius: '0.25rem',
+  },
+  '& p': {
+    margin: '0.5rem 0',
+  },
+  '& ul, & ol': {
+    margin: '0.5rem 0',
+    paddingLeft: '1.5rem',
+  },
+  '& blockquote': {
+    borderLeft: '4px solid rgba(255, 255, 255, 0.2)',
+    margin: '0.5rem 0',
+    paddingLeft: '1rem',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  '& table': {
+    borderCollapse: 'collapse',
+    width: '100%',
+    margin: '0.5rem 0',
+  },
+  '& th, & td': {
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    padding: '0.5rem',
+  },
+  '& th': {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  '& a': {
+    color: '#a78bfa',
+    textDecoration: 'underline',
+  },
+  '& a:hover': {
+    color: '#c4b5fd',
+  },
 }
 
 export default function ChatPage() {
@@ -424,6 +473,61 @@ export default function ChatPage() {
               transform: scale(1);
             }
           }
+
+          .markdown-content pre {
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+          }
+
+          .markdown-content code {
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+          }
+
+          .markdown-content p {
+            margin: 0.5rem 0;
+          }
+
+          .markdown-content ul,
+          .markdown-content ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+          }
+
+          .markdown-content blockquote {
+            border-left: 4px solid rgba(255, 255, 255, 0.2);
+            margin: 0.5rem 0;
+            padding-left: 1rem;
+            color: rgba(255, 255, 255, 0.8);
+          }
+
+          .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 0.5rem 0;
+          }
+
+          .markdown-content th,
+          .markdown-content td {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 0.5rem;
+          }
+
+          .markdown-content th {
+            background-color: rgba(255, 255, 255, 0.1);
+          }
+
+          .markdown-content a {
+            color: #a78bfa;
+            text-decoration: underline;
+          }
+
+          .markdown-content a:hover {
+            color: #c4b5fd;
+          }
         `
       }} />
 
@@ -464,7 +568,11 @@ export default function ChatPage() {
                       : "bg-gray-800/80 text-white border-gray-700"
                   }`}
                 >
-                  <p>{message.content}</p>
+                  <div className="markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
                   <p className="text-xs opacity-70 mt-1">
                     {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </p>
@@ -504,7 +612,6 @@ export default function ChatPage() {
               placeholder="메시지를 입력하세요..."
               className="flex-1 bg-gray-900/60 border-gray-700 text-white min-h-[40px] max-h-[150px] resize-none py-2 px-3"
               onKeyDown={handleKeyDown}
-              disabled={isLoading}
             />
             <Button
               type="submit"
