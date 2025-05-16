@@ -442,7 +442,7 @@ export default function McpSetupPage() {
             ) : error ? (
               <div className="text-center p-6 text-red-400">{error}</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-4 gap-4 mb-6 max-h-[50vh] overflow-y-auto pr-2">
                 {services.map((service) => (
                   <div
                     key={service.id}
