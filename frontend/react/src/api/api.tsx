@@ -28,8 +28,17 @@ api.interceptors.request.use(
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API 응답 성공:', response.config.url, response.status);
+    return response;
+  },
   async (error) => {
+    console.error('API 응답 오류:', 
+      error.config?.url, 
+      error.response?.status, 
+      error.response?.data || error.message
+    );
+    
     if (error.response?.status === 401) {
       // Handle token expiration or unauthorized access
       localStorage.removeItem('access_token');
