@@ -28,7 +28,6 @@ class Settings(BaseSettings):
 
     # GMS API KEY
     GMS_API_KEY: str = os.getenv("GMS_API_KEY")
-    GMS_API_BASE: str = os.getenv("GMS_API_BASE")
 
     # OPEN API KEY
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
